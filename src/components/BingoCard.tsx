@@ -52,7 +52,7 @@ export default function BingoCard() {
   const [isWin, setIsWin] = useState(false);
   const [isHydrated, setIsHydrated] = useState(false);
 
-  const { address, isConnecting } = useAccount();
+  const { address, isConnected, isConnecting } = useAccount();
   const { connect, connectors, error: connectError } = useConnect();
 
   useEffect(() => {
@@ -117,16 +117,16 @@ export default function BingoCard() {
       ) : (
         <>
           {isConnecting ? (
-            <p className="text-coinbase-blue mb-4">Connecting wallet...</p>
-          ) : !address ? (
+            <p className="text-coinbase-blue mb-4">Connecting...</p>
+          ) : isConnected ? (
+            <p className="text-sm text-coinbase-blue mb-4">Connected: {address?.slice(0, 6)}...{address?.slice(-4)}</p>
+          ) : (
             <button
-              onClick={() => connect({ connector: connectors[0] })} // Coinbase Wallet connector
+              onClick={() => connect({ connector: connectors[0] })} // Triggers SIWF/in-app if needed
               className="bg-coinbase-blue text-white px-6 py-2 rounded-lg font-bold hover:bg-blue-600 mb-4"
             >
-              Connect Wallet (optional for $BINGO beta)
+              Connect Wallet (for $BINGO beta)
             </button>
-          ) : (
-            <p className="text-sm text-coinbase-blue mb-4">Connected: {address.slice(0, 6)}...{address.slice(-4)}</p>
           )}
           {connectError && (
             <p className="text-red-500 text-sm mb-4">Wallet connection failed. You can still play!</p>
