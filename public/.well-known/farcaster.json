@@ -1,18 +1,28 @@
 {
-  "accountAssociation": {
-    "farcasterAddress": "your-farcaster-address-or-skip-for-now",
-    "signature": "your-signature-if-verifying"
-  },
   "miniapp": {
     "version": "1",
     "name": "Based Bingo",
-    "subtitle": "Onchain Bingo Game",
-    "description": "Play Bingo and win $BINGO tokens on Base-powered fun!",
-    "homeUrl": "https://based-bingo.vercel.app",
-    "iconUrl": "https://based-bingo.vercel.app/icon.png",
-    "splashImageUrl": "https://based-bingo.vercel.app/splash.png",
-    "requiredChains": ["eip155:8453"],
+    "subtitle": "Play onchain Bingo and win $BINGO tokens",
+    "description": "A fun, free Bingo game native to Farcaster and Coinbase Wallet. Mark your card, draw numbers, and win mock $BINGO—real payouts coming soon on Base!",
     "primaryCategory": "games",
-    "tags": ["bingo", "base", "crypto"]
+    "screenshotUrls": [
+      "https://based-bingo.vercel.app/screenshot1.png",
+      "https://based-bingo.vercel.app/screenshot2.png"
+    ],
+    "imageUrl": "https://based-bingo.vercel.app/preview.png",
+    "heroImageUrl": "https://based-bingo.vercel.app/hero.png",
+    "splashImageUrl": "https://based-bingo.vercel.app/splash.png",
+    "splashBackgroundColor": "#0052FF",
+    "tags": ["bingo", "games", "base", "crypto", "onchain"],
+    "tagline": "Bingo on Base: Play free, win real $BINGO soon!",
+    "buttonTitle": "Play Based Bingo",
+    "ogTitle": "Based Bingo – Onchain Fun on Farcaster",
+    "ogDescription": "Draw numbers, mark your card, and shout BINGO! Free play now, token wins coming.",
+    "ogImageUrl": "https://based-bingo.vercel.app/og-image.png",
+    "castShareUrl": "https://warpcast.com/~/compose?text=Just+won+at+Based+Bingo!+Play+now:&embeds[]=https://based-bingo.vercel.app",
+    "homeUrl": "https://based-bingo.vercel.app",
+    "webhookUrl": "https://based-bingo.vercel.app/api/webhook",
+    "requiredChains": ["eip155:8453"],
+    "iconUrl": "https://based-bingo.vercel.app/icon.png"
   }
 } 
