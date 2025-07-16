@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { useAccount, useConnect } from 'wagmi';
 import { useMiniKit } from '@coinbase/onchainkit/minikit';
+import { sdk } from '@farcaster/miniapp-sdk';
 
 function generateBingoCard() {
   const columnRanges = [
@@ -52,6 +53,16 @@ export default function BingoCard() {
   const [isWin, setIsWin] = useState(false);
   const [isHydrated, setIsHydrated] = useState(false);
 
+  // Daily limit logic
+  const [dailyPlays, setDailyPlays] = useState(0);
+  const [lastPlayDate, setLastPlayDate] = useState('');
+  const [unlimitedAccess, setUnlimitedAccess] = useState(false); // For future premium users
+  const MAX_FREE_PLAYS = 3;
+
+  // Timer logic
+  const [timer, setTimer] = useState(60);
+  const [timerActive, setTimerActive] = useState(false);
+
   const { address, isConnected, isConnecting } = useAccount();
   const { connect, connectors, error: connectError } = useConnect();
   const miniKit = useMiniKit();
@@ -59,6 +70,34 @@ export default function BingoCard() {
   useEffect(() => {
     resetGame();
   }, []);
+
+  // Daily plays tracking
+  useEffect(() => {
+    const storedDate = localStorage.getItem('lastPlayDate');
+    const storedPlays = parseInt(localStorage.getItem('dailyPlays') || '0');
+    const today = new Date().toISOString().split('T')[0];
+
+    if (storedDate !== today) {
+      setDailyPlays(0);
+      setLastPlayDate(today);
+      localStorage.setItem('dailyPlays', '0');
+      localStorage.setItem('lastPlayDate', today);
+    } else {
+      setDailyPlays(storedPlays);
+      setLastPlayDate(storedDate);
+    }
+  }, []);
+
+  // Timer effect
+  useEffect(() => {
+    if (timerActive && timer > 0) {
+      const interval = setInterval(() => setTimer((prev) => prev - 1), 1000);
+      return () => clearInterval(interval);
+    } else if (timer === 0 && timerActive) {
+      setTimerActive(false);
+      setCurrentNumber(null); // Miss turn
+    }
+  }, [timer, timerActive]);
 
   // New: Call MiniKit setFrameReady() once the card is loaded
   useEffect(() => {
@@ -77,12 +116,27 @@ export default function BingoCard() {
   }, []);
 
   const resetGame = () => {
+    // Check daily limit
+    if (dailyPlays >= MAX_FREE_PLAYS && !unlimitedAccess) {
+      return; // Don't reset if limit reached
+    }
+
     const newCard = generateBingoCard();
     setCard(newCard);
     setMarked(new Set(['22']));
     setCurrentNumber(null);
     setDrawnNumbers(new Set());
     setIsWin(false);
+    setTimer(60);
+    setTimerActive(false);
+    
+    // Increment daily plays
+    setDailyPlays((prev) => {
+      const newPlays = prev + 1;
+      localStorage.setItem('dailyPlays', newPlays.toString());
+      return newPlays;
+    });
+
     console.log('New Game Started. Card:', newCard);
     console.log('Center (col 2, row 2):', newCard[2][2]); // Debug
   };
@@ -94,6 +148,8 @@ export default function BingoCard() {
     } while (drawnNumbers.has(num)); // Ensure unique
     setDrawnNumbers((prev) => new Set([...prev, num]));
     setCurrentNumber(num);
+    setTimer(60);
+    setTimerActive(true);
   };
 
   const markCell = (row: number, col: number) => {
@@ -101,14 +157,38 @@ export default function BingoCard() {
     if (typeof num === 'number' && num === currentNumber) {
       const pos = `${col}${row}`;
       setMarked((prev) => new Set([...prev, pos]));
+      setTimerActive(false); // Stop timer when number is marked
     }
+  };
+
+  const handleShareForPlay = async () => {
+    try {
+      // Use openUrl to share on Farcaster
+      await sdk.actions.openUrl('https://warpcast.com/~/compose?text=Just+playing+Based+Bingo—join+me!+https://based-bingo.vercel.app&embeds[]=https://based-bingo.vercel.app');
+      // On success, grant +1 play
+      setDailyPlays((prev) => {
+        const newPlays = Math.max(0, prev - 1); // Reduce by 1 to allow another play
+        localStorage.setItem('dailyPlays', newPlays.toString());
+        return newPlays;
+      });
+    } catch (error) {
+      console.error('Failed to share:', error);
+    }
+  };
+
+  const extendTimer = () => {
+    // Future: Add $BINGO token cost for extending timer
+    setTimer((prev) => prev + 30);
   };
 
   useEffect(() => {
     if (checkWin(marked)) {
       setIsWin(true);
+      setTimerActive(false);
     }
   }, [marked]);
+
+  const canPlay = dailyPlays < MAX_FREE_PLAYS || unlimitedAccess;
 
   return (
     <div className="text-center max-w-sm mx-auto"> {/* Responsive container */}
@@ -133,6 +213,25 @@ export default function BingoCard() {
           )}
         </>
       )}
+
+      {/* Daily plays counter */}
+      <div className="mb-4 text-sm">
+        <p className="text-coinbase-blue">
+          Free plays today: {dailyPlays}/{MAX_FREE_PLAYS}
+        </p>
+        {!canPlay && (
+          <div className="mt-2">
+            <p className="text-red-500 text-sm mb-2">Daily limit reached!</p>
+            <button
+              onClick={handleShareForPlay}
+              className="bg-purple-600 text-white px-4 py-2 rounded-lg text-sm font-bold hover:bg-purple-700"
+            >
+              Share on Farcaster for +1 Play
+            </button>
+          </div>
+        )}
+      </div>
+
       <div className="grid grid-cols-5 gap-1 mb-4">
         {['B', 'I', 'N', 'G', 'O'].map((letter) => (
           <div key={letter} className="font-bold text-coinbase-blue text-lg">
@@ -159,21 +258,44 @@ export default function BingoCard() {
           })
         )}
       </div>
+
+      {/* Timer display */}
+      {timerActive && (
+        <div className="mb-4">
+          <p className={`text-lg font-bold ${timer <= 10 ? 'text-red-500' : 'text-coinbase-blue'}`}>
+            Time left: {timer}s
+          </p>
+          {timer <= 10 && (
+            <button
+              onClick={extendTimer}
+              className="bg-yellow-500 text-white px-3 py-1 rounded text-sm font-bold hover:bg-yellow-600 mt-1"
+            >
+              +30s (10 $BINGO)
+            </button>
+          )}
+        </div>
+      )}
+
       <div className="flex justify-center gap-4 mb-2">
         <button
           onClick={drawNumber}
           className={`px-6 py-2 rounded-lg font-bold transition-all ${
-            isWin || drawnNumbers.size >= 75
+            isWin || drawnNumbers.size >= 75 || !canPlay
               ? 'bg-gray-400 text-gray-600 cursor-not-allowed'
               : 'bg-coinbase-blue text-white hover:bg-blue-600'
           }`}
-          disabled={isWin || drawnNumbers.size >= 75} // No more draws if won or all drawn
+          disabled={isWin || drawnNumbers.size >= 75 || !canPlay}
         >
           Draw Number
         </button>
         <button
           onClick={resetGame}
-          className="bg-gray-500 text-white px-6 py-2 rounded-lg font-bold hover:bg-gray-600"
+          className={`px-6 py-2 rounded-lg font-bold transition-all ${
+            !canPlay
+              ? 'bg-gray-400 text-gray-600 cursor-not-allowed'
+              : 'bg-gray-500 text-white hover:bg-gray-600'
+          }`}
+          disabled={!canPlay}
         >
           New Game
         </button>
