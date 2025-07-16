@@ -1,5 +1,5 @@
 import { Metadata } from 'next';
-import WagmiWrapper from '@/components/WagmiWrapper';
+import { MiniKitProvider } from '@/providers/MiniKitProvider';
 import BingoCard from '@/components/BingoCard';
 
 export const metadata: Metadata = {
@@ -39,11 +39,11 @@ export const metadata: Metadata = {
 
 export default function Home() {
   return (
-    <WagmiWrapper>
+    <MiniKitProvider>
       <main className="flex min-h-screen flex-col items-center justify-center bg-white text-coinbase-blue p-4">
         <h1 className="text-3xl font-bold mb-4">Based Bingo</h1>
         <BingoCard />
       </main>
-    </WagmiWrapper>
+    </MiniKitProvider>
   );
 }

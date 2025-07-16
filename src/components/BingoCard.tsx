@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { useAccount, useConnect } from 'wagmi';
-import { sdk } from '@farcaster/miniapp-sdk'; // New import for Farcaster SDK
+import { useMiniKit } from '@coinbase/onchainkit/minikit';
 
 function generateBingoCard() {
   const columnRanges = [
@@ -54,18 +54,18 @@ export default function BingoCard() {
 
   const { address, isConnected, isConnecting } = useAccount();
   const { connect, connectors, error: connectError } = useConnect();
+  const miniKit = useMiniKit();
 
   useEffect(() => {
     resetGame();
   }, []);
 
-  // New: Call Farcaster SDK ready() once the card is loaded
+  // New: Call MiniKit setFrameReady() once the card is loaded
   useEffect(() => {
     if (card.length > 0) { // Ensure app is ready (card generated)
-      sdk.actions.ready(); // Hide splash screen
-      // Optional: sdk.actions.ready({ disableNativeGestures: true }); if gestures conflict
+      miniKit.setFrameReady(); // Hide splash screen in Coinbase Wallet
     }
-  }, [card]);
+  }, [card, miniKit]);
 
   // Handle hydration with timeout fallback
   useEffect(() => {

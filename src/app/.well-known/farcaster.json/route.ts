@@ -1,0 +1,39 @@
+import { NextResponse } from 'next/server';
+
+export async function GET() {
+  const manifest = {
+    miniapp: {
+      version: "1",
+      name: "Based Bingo",
+      subtitle: "Bingo game with token wins",
+      description: "A fun, free Bingo game native to Farcaster and Coinbase Wallet. Mark your card, draw numbers, and win mock BINGO - real payouts coming soon on Base!",
+      primaryCategory: "games",
+      screenshotUrls: [
+        "https://based-bingo.vercel.app/screenshot1.png",
+        "https://based-bingo.vercel.app/screenshot2.png"
+      ],
+      imageUrl: "https://based-bingo.vercel.app/preview.png",
+      heroImageUrl: "https://based-bingo.vercel.app/hero.png",
+      splashImageUrl: "https://based-bingo.vercel.app/splash.png",
+      splashBackgroundColor: "#0052FF",
+      tags: ["bingo", "games", "base", "crypto", "onchain"],
+      tagline: "Play Bingo win real BINGO soon",
+      buttonTitle: "Play Based Bingo",
+      ogTitle: "Based Bingo Onchain Fun",
+      ogDescription: "Draw numbers, mark your card, and shout BINGO! Free play now, token wins coming.",
+      ogImageUrl: "https://based-bingo.vercel.app/og-image.png",
+      castShareUrl: "https://based-bingo.vercel.app/share",
+      homeUrl: "https://based-bingo.vercel.app",
+      webhookUrl: "https://based-bingo.vercel.app/api/webhook",
+      requiredChains: ["eip155:8453"],
+      iconUrl: "https://based-bingo.vercel.app/icon.png"
+    },
+    accountAssociation: {
+      header: process.env.FARCASTER_HEADER || "eyJmaWQiOjEwNDUwNDIsInR5cGUiOiJhdXRoIiwia2V5IjoiMHgyZTM3MkEyNzFkQjI3NWNlMDRDOTdkM2RlNWZBMUIzM0QzZUJFNmRFIn0",
+      payload: process.env.FARCASTER_PAYLOAD || "eyJkb21haW4iOiJiYXNlZC1iaW5nby52ZXJjZWwuYXBwIn0",
+      signature: process.env.FARCASTER_SIGNATURE || "/EnNzL6KJD3o05tHyqm/CF/jz2CryQK88Br8UHF3BzcT0hzG8/+Rllh2C/bj3ohHI2eFjMijBkLbohdC7IQggRs="
+    }
+  };
+  
+  return NextResponse.json(manifest);
+} 

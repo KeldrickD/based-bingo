@@ -13,6 +13,8 @@ A fun, interactive Bingo game built for Farcaster and Coinbase Wallet integratio
 
 ### 💼 **Wallet Integration**
 - **Coinbase Wallet**: Seamless connection with Base network support
+- **Farcaster Mini App**: Native integration with Farcaster ecosystem
+- **OnchainKit**: Full native support in Coinbase Wallet with MiniKit
 - **Address Display**: Shows truncated wallet address when connected
 - **Future-Ready**: Prepared for $BINGO token airdrops and on-chain features
 
@@ -42,12 +44,31 @@ A fun, interactive Bingo game built for Farcaster and Coinbase Wallet integratio
    npm install
    ```
 
-3. **Start development server**
+3. **Set up environment variables**
+   Create a `.env.local` file in the root directory:
+   ```bash
+   # OnchainKit Configuration
+   NEXT_PUBLIC_ONCHAINKIT_PROJECT_NAME=Based Bingo
+   NEXT_PUBLIC_URL=https://based-bingo.vercel.app
+   NEXT_PUBLIC_ONCHAINKIT_API_KEY=your-api-key-here
+
+   # Farcaster Account Association (from your manifest)
+   FARCASTER_HEADER=eyJmaWQiOjEwNDUwNDIsInR5cGUiOiJhdXRoIiwia2V5IjoiMHgyZTM3MkEyNzFkQjI3NWNlMDRDOTdkM2RlNWZBMUIzM0QzZUJFNmRFIn0
+   FARCASTER_PAYLOAD=eyJkb21haW4iOiJiYXNlZC1iaW5nby52ZXJjZWwuYXBwIn0
+   FARCASTER_SIGNATURE=/EnNzL6KJD3o05tHyqm/CF/jz2CryQK88Br8UHF3BzcT0hzG8/+Rllh2C/bj3ohHI2eFjMijBkLbohdC7IQggRs=
+   ```
+
+4. **Get OnchainKit API Key**
+   - Visit [onchainkit.xyz/dashboard](https://onchainkit.xyz/dashboard)
+   - Sign up and get your free API key
+   - Add it to your `.env.local` file
+
+5. **Start development server**
    ```bash
    npm run dev
    ```
 
-4. **Open your browser**
+6. **Open your browser**
    Navigate to [http://localhost:3000](http://localhost:3000)
 
 ## 🎯 How to Play
@@ -63,6 +84,7 @@ A fun, interactive Bingo game built for Farcaster and Coinbase Wallet integratio
 - **Framework**: Next.js 15 with App Router
 - **Styling**: Tailwind CSS v4 with custom Coinbase blue theme
 - **Web3**: Wagmi v2 + Viem for wallet integration
+- **OnchainKit**: MiniKit for native Coinbase Wallet integration
 - **Blockchain**: Base network (optimized for $BINGO token)
 - **Language**: TypeScript for type safety
 
@@ -74,12 +96,22 @@ based-bingo/
 │   ├── app/
 │   │   ├── globals.css          # Tailwind styles + custom colors
 │   │   ├── layout.tsx           # Root layout
-│   │   └── page.tsx             # Main page with metadata
+│   │   ├── page.tsx             # Main page with metadata
+│   │   ├── share/
+│   │   │   └── page.tsx         # Share page for Farcaster
+│   │   └── .well-known/
+│   │       └── farcaster.json/
+│   │           └── route.ts     # API route for manifest
 │   ├── components/
-│   │   ├── BingoCard.tsx        # Main game component
-│   │   └── WagmiWrapper.tsx     # Wallet provider wrapper
+│   │   └── BingoCard.tsx        # Main game component
+│   ├── providers/
+│   │   └── MiniKitProvider.tsx  # OnchainKit provider wrapper
 │   └── lib/
 │       └── wagmi-config.ts      # Wagmi configuration
+├── public/
+│   ├── .well-known/
+│   │   └── farcaster.json       # Farcaster manifest
+│   └── [images]                 # App images and assets
 ├── tailwind.config.ts           # Tailwind configuration
 └── package.json                 # Dependencies and scripts
 ```
@@ -88,9 +120,16 @@ based-bingo/
 
 ### Vercel (Recommended)
 1. Connect your GitHub repository to Vercel
-2. Deploy with default settings
-3. Update the Farcaster Mini App URL in `src/app/page.tsx`
-4. Add a preview image at `public/preview.png` (1200x630 recommended)
+2. Add environment variables in Vercel dashboard:
+   - `NEXT_PUBLIC_ONCHAINKIT_PROJECT_NAME`
+   - `NEXT_PUBLIC_URL`
+   - `NEXT_PUBLIC_ONCHAINKIT_API_KEY`
+   - `FARCASTER_HEADER`
+   - `FARCASTER_PAYLOAD`
+   - `FARCASTER_SIGNATURE`
+3. Deploy with default settings
+4. Update the Farcaster Mini App URL in `src/app/page.tsx`
+5. Add a preview image at `public/preview.png` (1200x630 recommended)
 
 ### Manual Deployment
 ```bash
@@ -122,6 +161,7 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 - **Farcaster**: For the amazing social protocol
 - **Coinbase**: For the beautiful wallet and Base network
+- **OnchainKit**: For seamless Mini App integration
 - **Next.js Team**: For the incredible React framework
 - **Wagmi Team**: For the excellent Web3 hooks
 
