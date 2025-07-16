@@ -19,7 +19,7 @@
     "ogTitle": "Based Bingo Onchain Fun",
     "ogDescription": "Draw numbers, mark your card, and shout BINGO! Free play now, token wins coming.",
     "ogImageUrl": "https://based-bingo.vercel.app/og-image.png",
-    "castShareUrl": "https://warpcast.com/~/compose?text=Just+won+at+Based+Bingo!+Play+now:&embeds[]=https://based-bingo.vercel.app",
+    "castShareUrl": "https://based-bingo.vercel.app/share",
     "homeUrl": "https://based-bingo.vercel.app",
     "webhookUrl": "https://based-bingo.vercel.app/api/webhook",
     "requiredChains": ["eip155:8453"],
