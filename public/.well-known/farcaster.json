@@ -24,5 +24,10 @@
     "webhookUrl": "https://based-bingo.vercel.app/api/webhook",
     "requiredChains": ["eip155:8453"],
     "iconUrl": "https://based-bingo.vercel.app/icon.png"
+  },
+  "accountAssociation": {
+    "header": "eyJmaWQiOjEwNDUwNDIsInR5cGUiOiJhdXRoIiwia2V5IjoiMHgyZTM3MkEyNzFkQjI3NWNlMDRDOTdkM2RlNWZBMUIzM0QzZUJFNmRFIn0",
+    "payload": "eyJkb21haW4iOiJiYXNlZC1iaW5nby52ZXJjZWwuYXBwIn0",
+    "signature": "/EnNzL6KJD3o05tHyqm/CF/jz2CryQK88Br8UHF3BzcT0hzG8/+Rllh2C/bj3ohHI2eFjMijBkLbohdC7IQggRs="
   }
 } 
