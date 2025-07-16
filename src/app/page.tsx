@@ -10,7 +10,7 @@ export const metadata: Metadata = {
   other: {
     'fc:miniapp': JSON.stringify({
       version: '1',
-      imageUrl: 'https://based-bingo.vercel.app/icon.png', // Your app icon
+      imageUrl: 'https://based-bingo.vercel.app/preview.png', // Preview image for Farcaster Mini App (1200x630)
       buttons: [
         {
           title: 'Play Based Bingo',

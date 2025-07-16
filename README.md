@@ -90,6 +90,7 @@ based-bingo/
 1. Connect your GitHub repository to Vercel
 2. Deploy with default settings
 3. Update the Farcaster Mini App URL in `src/app/page.tsx`
+4. Add a preview image at `public/preview.png` (1200x630 recommended)
 
 ### Manual Deployment
 ```bash
