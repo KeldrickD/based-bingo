@@ -51,12 +51,16 @@ export default function BingoCard() {
   const [isWin, setIsWin] = useState(false);
   const [isHydrated, setIsHydrated] = useState(false);
 
-  const { address } = useAccount();
-  const { connect, connectors } = useConnect();
+  const { address, isConnecting } = useAccount();
+  const { connect, connectors, error: connectError } = useConnect();
 
-  // Handle hydration
+  // Handle hydration with timeout fallback
   useEffect(() => {
-    setIsHydrated(true);
+    const timer = setTimeout(() => {
+      setIsHydrated(true);
+    }, 1000); // 1 second timeout
+
+    return () => clearTimeout(timer);
   }, []);
 
   useEffect(() => {
@@ -100,18 +104,23 @@ export default function BingoCard() {
   return (
     <div className="text-center max-w-sm mx-auto"> {/* Responsive container */}
       {!isHydrated ? (
-        <div className="mb-4 p-2 text-coinbase-blue">Loading wallet connection...</div>
+        <div className="mb-4 p-2 text-coinbase-blue">Loading...</div>
       ) : (
         <>
-          {!address ? (
+          {isConnecting ? (
+            <p className="text-coinbase-blue mb-4">Connecting wallet...</p>
+          ) : !address ? (
             <button
               onClick={() => connect({ connector: connectors[0] })} // Coinbase Wallet connector
               className="bg-coinbase-blue text-white px-6 py-2 rounded-lg font-bold hover:bg-blue-600 mb-4"
             >
-              Connect Wallet (for future $BINGO wins)
+              Connect Wallet (optional for $BINGO beta)
             </button>
           ) : (
             <p className="text-sm text-coinbase-blue mb-4">Connected: {address.slice(0, 6)}...{address.slice(-4)}</p>
+          )}
+          {connectError && (
+            <p className="text-red-500 text-sm mb-4">Wallet connection failed. You can still play!</p>
           )}
         </>
       )}
