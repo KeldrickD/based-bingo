@@ -10,16 +10,25 @@ export const metadata: Metadata = {
   other: {
     'fc:miniapp': JSON.stringify({
       version: '1',
-      imageUrl: 'https://based-bingo.vercel.app/preview.png', // Preview image for Farcaster Mini App (1200x630)
-      buttons: [
-        {
-          title: 'Play Based Bingo',
-          action: {
-            type: 'launch_frame',
-            url: 'https://based-bingo.vercel.app',
-          },
+      imageUrl: 'https://based-bingo.vercel.app/preview.png', // Ensure 3:2 ratio (e.g., 600x400px)
+      button: {  // Singular object, not array
+        title: 'Play Based Bingo',  // Max 32 chars
+        action: {
+          type: 'launch_frame',
+          url: 'https://based-bingo.vercel.app',
         },
-      ],
+      },
+    }),
+    'fc:frame': JSON.stringify({  // For backward compatibility
+      version: '1',
+      imageUrl: 'https://based-bingo.vercel.app/preview.png',
+      button: {
+        title: 'Play Based Bingo',
+        action: {
+          type: 'launch_frame',
+          url: 'https://based-bingo.vercel.app',
+        },
+      },
     }),
   },
 };
