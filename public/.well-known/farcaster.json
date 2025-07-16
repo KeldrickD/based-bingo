@@ -8,9 +8,9 @@
     "name": "Based Bingo",
     "subtitle": "Onchain Bingo Game",
     "description": "Play Bingo and win $BINGO tokens on Base-powered fun!",
-    "homeUrl": "https://your-vercel-url.com",
-    "iconUrl": "https://your-vercel-url.com/icon.svg",
-    "splashImageUrl": "https://your-vercel-url.com/splash.svg",
+    "homeUrl": "https://based-bingo.vercel.app",
+    "iconUrl": "https://based-bingo.vercel.app/icon.png",
+    "splashImageUrl": "https://based-bingo.vercel.app/splash.png",
     "requiredChains": ["eip155:8453"],
     "primaryCategory": "games",
     "tags": ["bingo", "base", "crypto"]

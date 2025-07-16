@@ -10,13 +10,13 @@ export const metadata: Metadata = {
   other: {
     'fc:miniapp': JSON.stringify({
       version: '1',
-      imageUrl: 'https://your-preview-image-url.com/bingo-card.png', // Replace with real URL (e.g., upload screenshot to imgbb.com)
+      imageUrl: 'https://based-bingo.vercel.app/icon.png', // Your app icon
       buttons: [
         {
           title: 'Play Based Bingo',
           action: {
             type: 'launch_frame',
-            url: 'https://your-vercel-url.com', // Your deploy URL
+            url: 'https://based-bingo.vercel.app',
           },
         },
       ],
