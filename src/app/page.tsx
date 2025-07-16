@@ -10,22 +10,26 @@ export const metadata: Metadata = {
   other: {
     'fc:miniapp': JSON.stringify({
       version: '1',
-      imageUrl: 'https://based-bingo.vercel.app/preview.png', // Ensure 3:2 ratio (e.g., 600x400px)
-      button: {  // Singular object, not array
+      name: 'Based Bingo',  // Required top-level: App name (max 32 chars)
+      imageUrl: 'https://based-bingo.vercel.app/preview.png',  // 3:2 ratio recommended
+      button: {
         title: 'Play Based Bingo',  // Max 32 chars
         action: {
           type: 'launch_frame',
+          name: 'launch',  // Add this for Action validation (short identifier, e.g., "play" or "open")
           url: 'https://based-bingo.vercel.app',
         },
       },
     }),
-    'fc:frame': JSON.stringify({  // For backward compatibility
+    'fc:frame': JSON.stringify({  // Backward compatibility fallback
       version: '1',
+      name: 'Based Bingo',
       imageUrl: 'https://based-bingo.vercel.app/preview.png',
       button: {
         title: 'Play Based Bingo',
         action: {
           type: 'launch_frame',
+          name: 'launch',
           url: 'https://based-bingo.vercel.app',
         },
       },
