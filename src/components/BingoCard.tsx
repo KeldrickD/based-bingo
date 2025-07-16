@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { useAccount, useConnect } from 'wagmi';
+import { sdk } from '@farcaster/miniapp-sdk'; // New import for Farcaster SDK
 
 function generateBingoCard() {
   const columnRanges = [
@@ -54,6 +55,18 @@ export default function BingoCard() {
   const { address, isConnecting } = useAccount();
   const { connect, connectors, error: connectError } = useConnect();
 
+  useEffect(() => {
+    resetGame();
+  }, []);
+
+  // New: Call Farcaster SDK ready() once the card is loaded
+  useEffect(() => {
+    if (card.length > 0) { // Ensure app is ready (card generated)
+      sdk.actions.ready(); // Hide splash screen
+      // Optional: sdk.actions.ready({ disableNativeGestures: true }); if gestures conflict
+    }
+  }, [card]);
+
   // Handle hydration with timeout fallback
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -61,10 +74,6 @@ export default function BingoCard() {
     }, 1000); // 1 second timeout
 
     return () => clearTimeout(timer);
-  }, []);
-
-  useEffect(() => {
-    resetGame();
   }, []);
 
   const resetGame = () => {
