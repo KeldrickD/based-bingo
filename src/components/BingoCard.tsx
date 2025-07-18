@@ -252,31 +252,7 @@ export default function BingoCard() {
   const startAutoDraw = () => {
     console.log('Starting auto-draw...');
     
-    // Draw first number immediately
-    const drawFirstNumber = () => {
-      if (drawnNumbers.size >= 75 || gameTimer <= 0) {
-        stopAutoDraw();
-        return;
-      }
-
-      let num: number;
-      do {
-        num = Math.floor(Math.random() * 75) + 1;
-      } while (drawnNumbers.has(num));
-
-      console.log('Drawing first number:', num);
-      console.log('Current drawn numbers:', Array.from(drawnNumbers));
-      setDrawnNumbers((prev) => new Set([...prev, num]));
-      setRecentDraws((prev) => {
-        const newDraws = [...prev, num].slice(-5); // Keep last 5
-        return newDraws;
-      });
-    };
-
-    // Draw first number immediately
-    drawFirstNumber();
-    
-    // Then set up interval for subsequent draws
+    // Set up interval for all draws (including first one)
     const interval = setInterval(() => {
       setDrawnNumbers((currentDrawnNumbers) => {
         if (currentDrawnNumbers.size >= 75 || gameTimer <= 0) {
@@ -300,9 +276,34 @@ export default function BingoCard() {
         
         return newDrawnNumbers;
       });
-    }, 2500); // 2.5s interval (faster than before)
+    }, 2500); // 2.5s interval
 
     setAutoDrawInterval(interval);
+    
+    // Trigger first draw immediately
+    setTimeout(() => {
+      setDrawnNumbers((currentDrawnNumbers) => {
+        if (currentDrawnNumbers.size >= 75 || gameTimer <= 0) {
+          return currentDrawnNumbers;
+        }
+
+        let num: number;
+        do {
+          num = Math.floor(Math.random() * 75) + 1;
+        } while (currentDrawnNumbers.has(num));
+
+        console.log('Drawing first number:', num);
+        console.log('Current drawn numbers:', Array.from(currentDrawnNumbers));
+        const newDrawnNumbers = new Set([...currentDrawnNumbers, num]);
+        
+        setRecentDraws((prev) => {
+          const newDraws = [...prev, num].slice(-5); // Keep last 5
+          return newDraws;
+        });
+        
+        return newDrawnNumbers;
+      });
+    }, 100); // Small delay to ensure interval is set up first
   };
 
   const markCell = (row: number, col: number) => {
@@ -473,9 +474,7 @@ export default function BingoCard() {
       <div className="mb-4 min-h-[80px]"> {/* Fixed height to prevent layout shift */}
         {recentDraws.length > 0 ? (
           <>
-            <p className="text-sm text-coinbase-blue mb-2">
-              Recent Draws: ({drawnNumbers.size}/75 total)
-            </p>
+            <p className="text-sm text-coinbase-blue mb-2">Recent Draws:</p>
             <div className="flex justify-center gap-2">
               {recentDraws.map((num, idx) => (
                 <div
