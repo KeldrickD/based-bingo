@@ -65,6 +65,7 @@ export default function BingoCard() {
   const [autoDrawInterval, setAutoDrawInterval] = useState<NodeJS.Timeout | null>(null);
   const [isHydrated, setIsHydrated] = useState(false);
   const [isSharing, setIsSharing] = useState(false);
+  const [gameStarted, setGameStarted] = useState(false);
 
   // Daily limits (from before)
   const [dailyPlays, setDailyPlays] = useState(0);
@@ -88,10 +89,14 @@ export default function BingoCard() {
     setGameTimer(120);
     setTimerActive(false);
     setIsSharing(false);
-    if (autoDrawInterval) clearInterval(autoDrawInterval);
-    console.log('New Game Started. Card:', newCard);
+    setGameStarted(false);
+    if (autoDrawInterval) {
+      clearInterval(autoDrawInterval);
+      setAutoDrawInterval(null);
+    }
+    console.log('Game Reset. Card:', newCard);
     console.log('Center (col 2, row 2):', newCard[2][2]); // Debug
-  }, [autoDrawInterval]);
+  }, []);
 
   const stopAutoDraw = useCallback(() => {
     if (autoDrawInterval) {
@@ -100,9 +105,12 @@ export default function BingoCard() {
     }
   }, [autoDrawInterval]);
 
+  // Initialize card on mount (but don't start game)
   useEffect(() => {
-    resetGame();
-  }, [resetGame]);
+    const newCard = generateBingoCard();
+    setCard(newCard);
+    console.log('Initial card generated:', newCard);
+  }, []);
 
   // Daily limits load
   useEffect(() => {
@@ -131,6 +139,7 @@ export default function BingoCard() {
     } else if (gameTimer === 0 && timerActive) {
       stopAutoDraw();
       alert('Time up! Game over.');
+      setTimerActive(false);
     }
   }, [timerActive, gameTimer, stopAutoDraw]);
 
@@ -151,9 +160,14 @@ export default function BingoCard() {
   }, []);
 
   const startGame = () => {
-    if (!unlimitedToday && dailyPlays >= MAX_FREE_PLAYS) return;
+    if (!unlimitedToday && dailyPlays >= MAX_FREE_PLAYS) {
+      alert('Daily limit reached! Share on Farcaster for +1 play or pay 50 $BINGO for unlimited.');
+      return;
+    }
 
+    console.log('Starting game...');
     resetGame();
+    setGameStarted(true);
     setTimerActive(true);
     startAutoDraw();
 
@@ -165,6 +179,7 @@ export default function BingoCard() {
   };
 
   const startAutoDraw = () => {
+    console.log('Starting auto-draw...');
     const interval = setInterval(() => {
       if (drawnNumbers.size >= 75 || gameTimer <= 0) {
         stopAutoDraw();
@@ -176,6 +191,7 @@ export default function BingoCard() {
         num = Math.floor(Math.random() * 75) + 1;
       } while (drawnNumbers.has(num));
 
+      console.log('Drawing number:', num);
       setDrawnNumbers((prev) => new Set([...prev, num]));
       setRecentDraws((prev) => {
         const newDraws = [...prev, num].slice(-5); // Keep last 5
@@ -187,10 +203,13 @@ export default function BingoCard() {
   };
 
   const markCell = (row: number, col: number) => {
+    if (!gameStarted) return; // Can't mark if game hasn't started
+    
     const num = card[col][row];
     if (typeof num === 'number' && recentDraws.includes(num)) { // Allow marking any recent draw
       const pos = `${col}${row}`;
       setMarked((prev) => new Set([...prev, pos]));
+      console.log('Marked cell:', pos, 'with number:', num);
     }
   };
 
@@ -273,6 +292,7 @@ export default function BingoCard() {
     // Future: Add $BINGO token cost for unlimited plays
     setUnlimitedToday(true);
     localStorage.setItem('unlimitedDate', new Date().toISOString().split('T')[0]);
+    alert('Unlimited plays activated for today!');
   };
 
   const canPlay = dailyPlays < MAX_FREE_PLAYS || unlimitedToday;
@@ -289,7 +309,14 @@ export default function BingoCard() {
             <p className="text-sm text-coinbase-blue mb-4">Connected: {address?.slice(0, 6)}...{address?.slice(-4)}</p>
           ) : (
             <button
-              onClick={() => connect({ connector: connectors[0] })} // Triggers SIWF/in-app if needed
+              onClick={() => {
+                console.log('Connecting wallet...');
+                if (connectors.length > 0) {
+                  connect({ connector: connectors[0] });
+                } else {
+                  console.error('No connectors available');
+                }
+              }}
               className="bg-coinbase-blue text-white px-6 py-2 rounded-lg font-bold hover:bg-blue-600 mb-4"
             >
               Connect Wallet (for $BINGO beta)
@@ -345,7 +372,7 @@ export default function BingoCard() {
                   ${isMarked ? 'bg-coinbase-blue text-white' : 'bg-white text-coinbase-blue hover:bg-blue-100'}
                   ${num === 'FREE' ? 'text-xs rotate-[-45deg]' : ''}
                   ${isRecentDraw && !isMarked ? 'border-yellow-500 border-4 animate-pulse' : ''}`}
-                disabled={isMarked || (typeof num !== 'number' && num !== 'FREE')}
+                disabled={isMarked || (typeof num !== 'number' && num !== 'FREE') || !gameStarted}
               >
                 {num}
               </button>
@@ -364,7 +391,7 @@ export default function BingoCard() {
           }`}
           disabled={!canPlay}
         >
-          New Game ({unlimitedToday ? 'Unlimited' : MAX_FREE_PLAYS - dailyPlays} left)
+          {gameStarted ? 'New Game' : 'Start Game'} ({unlimitedToday ? 'Unlimited' : MAX_FREE_PLAYS - dailyPlays} left)
         </button>
       </div>
 
