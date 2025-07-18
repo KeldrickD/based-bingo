@@ -134,6 +134,12 @@ export default function BingoCard() {
   }, [connect, connectors, isMiniApp]);
 
   const resetGame = useCallback(() => {
+    // Clear any existing interval first
+    if (autoDrawInterval) {
+      clearInterval(autoDrawInterval);
+      setAutoDrawInterval(null);
+    }
+    
     const newCard = generateBingoCard();
     setCard(newCard);
     setMarked(new Set(['22']));
@@ -144,13 +150,10 @@ export default function BingoCard() {
     setTimerActive(false);
     setIsSharing(false);
     setGameStarted(false);
-    if (autoDrawInterval) {
-      clearInterval(autoDrawInterval);
-      setAutoDrawInterval(null);
-    }
+    
     console.log('Game Reset. Card:', newCard);
     console.log('Center (col 2, row 2):', newCard[2][2]); // Debug
-  }, []);
+  }, [autoDrawInterval]);
 
   const stopAutoDraw = useCallback(() => {
     if (autoDrawInterval) {
@@ -235,6 +238,8 @@ export default function BingoCard() {
     resetGame();
     setGameStarted(true);
     setTimerActive(true);
+    
+    // Start auto-draw immediately
     startAutoDraw();
 
     if (!unlimitedToday) {
@@ -246,6 +251,31 @@ export default function BingoCard() {
 
   const startAutoDraw = () => {
     console.log('Starting auto-draw...');
+    
+    // Draw first number immediately
+    const drawFirstNumber = () => {
+      if (drawnNumbers.size >= 75 || gameTimer <= 0) {
+        stopAutoDraw();
+        return;
+      }
+
+      let num: number;
+      do {
+        num = Math.floor(Math.random() * 75) + 1;
+      } while (drawnNumbers.has(num));
+
+      console.log('Drawing first number:', num);
+      setDrawnNumbers((prev) => new Set([...prev, num]));
+      setRecentDraws((prev) => {
+        const newDraws = [...prev, num].slice(-5); // Keep last 5
+        return newDraws;
+      });
+    };
+
+    // Draw first number immediately
+    drawFirstNumber();
+    
+    // Then set up interval for subsequent draws
     const interval = setInterval(() => {
       if (drawnNumbers.size >= 75 || gameTimer <= 0) {
         stopAutoDraw();
@@ -263,7 +293,7 @@ export default function BingoCard() {
         const newDraws = [...prev, num].slice(-5); // Keep last 5
         return newDraws;
       });
-    }, 3500); // 3.5s interval
+    }, 2500); // 2.5s interval (faster than before)
 
     setAutoDrawInterval(interval);
   };
