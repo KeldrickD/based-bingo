@@ -1,6 +1,6 @@
 'use client'; // Client-side for state
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useAccount, useConnect } from 'wagmi';
 import { useMiniKit } from '@coinbase/onchainkit/minikit';
 import { sdk } from '@farcaster/miniapp-sdk';
@@ -45,7 +45,7 @@ function checkWin(marked: Set<string>): { count: number; types: string[] } {
 
   const completed = wins.filter((line) => line.every((pos) => marked.has(pos) || pos === '22'));
   const count = completed.length;
-  let types: string[] = [];
+  const types: string[] = [];
   if (count >= 1) types.push('Line Bingo!');
   if (count >= 2) types.push('Double Line!');
   if (count >= 5) types.push('Full House!'); // e.g., 5+ lines for blackout feel
@@ -56,7 +56,6 @@ function checkWin(marked: Set<string>): { count: number; types: string[] } {
 export default function BingoCard() {
   const [card, setCard] = useState<(number | string)[][]>([]);
   const [marked, setMarked] = useState<Set<string>>(new Set(['22']));
-  const [currentNumber, setCurrentNumber] = useState<number | null>(null);
   const [drawnNumbers, setDrawnNumbers] = useState<Set<number>>(new Set());
   const [recentDraws, setRecentDraws] = useState<number[]>([]); // Last 5 draws
   const [winInfo, setWinInfo] = useState<{ count: number; types: string[] }>({ count: 0, types: [] });
@@ -67,7 +66,6 @@ export default function BingoCard() {
 
   // Daily limits (from before)
   const [dailyPlays, setDailyPlays] = useState(0);
-  const [lastPlayDate, setLastPlayDate] = useState('');
   const [unlimitedToday, setUnlimitedToday] = useState(false);
   const MAX_FREE_PLAYS = 3;
 
@@ -75,9 +73,30 @@ export default function BingoCard() {
   const { connect, connectors, error: connectError } = useConnect();
   const miniKit = useMiniKit();
 
+  const resetGame = useCallback(() => {
+    const newCard = generateBingoCard();
+    setCard(newCard);
+    setMarked(new Set(['22']));
+    setDrawnNumbers(new Set());
+    setRecentDraws([]);
+    setWinInfo({ count: 0, types: [] });
+    setGameTimer(120);
+    setTimerActive(false);
+    if (autoDrawInterval) clearInterval(autoDrawInterval);
+    console.log('New Game Started. Card:', newCard);
+    console.log('Center (col 2, row 2):', newCard[2][2]); // Debug
+  }, [autoDrawInterval]);
+
+  const stopAutoDraw = useCallback(() => {
+    if (autoDrawInterval) {
+      clearInterval(autoDrawInterval);
+      setAutoDrawInterval(null);
+    }
+  }, [autoDrawInterval]);
+
   useEffect(() => {
     resetGame();
-  }, []);
+  }, [resetGame]);
 
   // Daily limits load
   useEffect(() => {
@@ -90,11 +109,9 @@ export default function BingoCard() {
       localStorage.setItem('lastPlayDate', today);
       localStorage.setItem('dailyPlays', '0');
       localStorage.removeItem('unlimitedDate');
-      setLastPlayDate(today);
       setDailyPlays(0);
       setUnlimitedToday(false);
     } else {
-      setLastPlayDate(storedDate || '');
       setDailyPlays(storedPlays);
       setUnlimitedToday(storedUnlimited);
     }
@@ -109,7 +126,7 @@ export default function BingoCard() {
       stopAutoDraw();
       alert('Time up! Game over.');
     }
-  }, [timerActive, gameTimer]);
+  }, [timerActive, gameTimer, stopAutoDraw]);
 
   // New: Call MiniKit setFrameReady() once the card is loaded
   useEffect(() => {
@@ -141,21 +158,6 @@ export default function BingoCard() {
     }
   };
 
-  const resetGame = () => {
-    const newCard = generateBingoCard();
-    setCard(newCard);
-    setMarked(new Set(['22']));
-    setCurrentNumber(null);
-    setDrawnNumbers(new Set());
-    setRecentDraws([]);
-    setWinInfo({ count: 0, types: [] });
-    setGameTimer(120);
-    setTimerActive(false);
-    if (autoDrawInterval) clearInterval(autoDrawInterval);
-    console.log('New Game Started. Card:', newCard);
-    console.log('Center (col 2, row 2):', newCard[2][2]); // Debug
-  };
-
   const startAutoDraw = () => {
     const interval = setInterval(() => {
       if (drawnNumbers.size >= 75 || gameTimer <= 0) {
@@ -169,7 +171,6 @@ export default function BingoCard() {
       } while (drawnNumbers.has(num));
 
       setDrawnNumbers((prev) => new Set([...prev, num]));
-      setCurrentNumber(num);
       setRecentDraws((prev) => {
         const newDraws = [...prev, num].slice(-5); // Keep last 5
         return newDraws;
@@ -177,13 +178,6 @@ export default function BingoCard() {
     }, 3500); // 3.5s interval
 
     setAutoDrawInterval(interval);
-  };
-
-  const stopAutoDraw = () => {
-    if (autoDrawInterval) {
-      clearInterval(autoDrawInterval);
-      setAutoDrawInterval(null);
-    }
   };
 
   const markCell = (row: number, col: number) => {
