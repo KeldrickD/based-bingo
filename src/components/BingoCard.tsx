@@ -352,6 +352,25 @@ export default function BingoCard() {
         )}
       </div>
 
+      {/* Recent draws display (moved to top, between title and card) */}
+      {recentDraws.length > 0 && (
+        <div className="mb-4">
+          <p className="text-sm text-coinbase-blue mb-2">Recent Draws:</p>
+          <div className="flex justify-center gap-2">
+            {recentDraws.map((num, idx) => (
+              <div
+                key={idx}
+                className={`w-12 h-12 border-2 border-coinbase-blue flex items-center justify-center text-lg font-bold rounded transition-opacity ${
+                  idx < recentDraws.length - 1 ? 'opacity-50' : 'opacity-100'
+                }`}
+              >
+                {num}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       <div ref={gridRef} className="grid grid-cols-5 gap-1 mb-4">
         {['B', 'I', 'N', 'G', 'O'].map((letter) => (
           <div key={letter} className="font-bold text-coinbase-blue text-lg">
@@ -400,25 +419,6 @@ export default function BingoCard() {
         <p className="text-xl text-red-500 font-bold mb-2">
           Time Left: {Math.floor(gameTimer / 60)}:{gameTimer % 60 < 10 ? '0' : ''}{gameTimer % 60}
         </p>
-      )}
-
-      {/* Recent draws display (last 5, fade older) */}
-      {recentDraws.length > 0 && (
-        <div className="mb-4">
-          <p className="text-sm text-coinbase-blue mb-2">Recent Draws:</p>
-          <div className="flex justify-center gap-2">
-            {recentDraws.map((num, idx) => (
-              <div
-                key={idx}
-                className={`w-12 h-12 border-2 border-coinbase-blue flex items-center justify-center text-lg font-bold rounded transition-opacity ${
-                  idx < recentDraws.length - 1 ? 'opacity-50' : 'opacity-100'
-                }`}
-              >
-                {num}
-              </div>
-            ))}
-          </div>
-        </div>
       )}
 
       {winInfo.types.length > 0 && (
