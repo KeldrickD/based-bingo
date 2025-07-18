@@ -20,48 +20,56 @@ function generateBingoCard() {
     return shuffled;
   });
 
-  card[2][2] = 'FREE'; // Explicitly set center free space
+  card[2][2] = 'FREE'; // Center free space
   return card;
 }
 
-function checkWin(marked: Set<string>): boolean {
+function checkWin(marked: Set<string>): { count: number; types: string[] } {
   const wins = [
-    // Rows
-    ['00', '01', '02', '03', '04'],
-    ['10', '11', '12', '13', '14'],
-    ['20', '21', '22', '23', '24'],
-    ['30', '31', '32', '33', '34'],
-    ['40', '41', '42', '43', '44'],
-    // Columns
-    ['00', '10', '20', '30', '40'],
-    ['01', '11', '21', '31', '41'],
-    ['02', '12', '22', '32', '42'],
-    ['03', '13', '23', '33', '43'],
-    ['04', '14', '24', '34', '44'],
-    // Diagonals
-    ['00', '11', '22', '33', '44'],
-    ['04', '13', '22', '31', '40'],
+    // Rows (single lines)
+    ['00', '01', '02', '03', '04'], // Row 1
+    ['10', '11', '12', '13', '14'], // Row 2
+    ['20', '21', '22', '23', '24'], // Row 3
+    ['30', '31', '32', '33', '34'], // Row 4
+    ['40', '41', '42', '43', '44'], // Row 5
+    // Columns (single lines)
+    ['00', '10', '20', '30', '40'], // Col B
+    ['01', '11', '21', '31', '41'], // Col I
+    ['02', '12', '22', '32', '42'], // Col N
+    ['03', '13', '23', '33', '43'], // Col G
+    ['04', '14', '24', '34', '44'], // Col O
+    // Diagonals (single lines)
+    ['00', '11', '22', '33', '44'], // Main diagonal
+    ['04', '13', '22', '31', '40'], // Anti-diagonal
   ];
-  return wins.some((line) => line.every((pos) => marked.has(pos) || pos === '22'));
+
+  const completed = wins.filter((line) => line.every((pos) => marked.has(pos) || pos === '22'));
+  const count = completed.length;
+  let types: string[] = [];
+  if (count >= 1) types.push('Line Bingo!');
+  if (count >= 2) types.push('Double Line!');
+  if (count >= 5) types.push('Full House!'); // e.g., 5+ lines for blackout feel
+
+  return { count, types };
 }
 
 export default function BingoCard() {
   const [card, setCard] = useState<(number | string)[][]>([]);
-  const [marked, setMarked] = useState<Set<string>>(new Set(['22'])); // FREE marked by default
+  const [marked, setMarked] = useState<Set<string>>(new Set(['22']));
   const [currentNumber, setCurrentNumber] = useState<number | null>(null);
-  const [drawnNumbers, setDrawnNumbers] = useState<Set<number>>(new Set()); // Track uniques
-  const [isWin, setIsWin] = useState(false);
+  const [drawnNumbers, setDrawnNumbers] = useState<Set<number>>(new Set());
+  const [recentDraws, setRecentDraws] = useState<number[]>([]); // Last 5 draws
+  const [winInfo, setWinInfo] = useState<{ count: number; types: string[] }>({ count: 0, types: [] });
+  const [gameTimer, setGameTimer] = useState(120); // 2 mins
+  const [timerActive, setTimerActive] = useState(false);
+  const [autoDrawInterval, setAutoDrawInterval] = useState<NodeJS.Timeout | null>(null);
   const [isHydrated, setIsHydrated] = useState(false);
 
-  // Daily limit logic
+  // Daily limits (from before)
   const [dailyPlays, setDailyPlays] = useState(0);
   const [lastPlayDate, setLastPlayDate] = useState('');
-  const [unlimitedAccess, setUnlimitedAccess] = useState(false); // For future premium users
+  const [unlimitedToday, setUnlimitedToday] = useState(false);
   const MAX_FREE_PLAYS = 3;
-
-  // Timer logic
-  const [timer, setTimer] = useState(60);
-  const [timerActive, setTimerActive] = useState(false);
 
   const { address, isConnected, isConnecting } = useAccount();
   const { connect, connectors, error: connectError } = useConnect();
@@ -71,33 +79,37 @@ export default function BingoCard() {
     resetGame();
   }, []);
 
-  // Daily plays tracking
+  // Daily limits load
   useEffect(() => {
+    const today = new Date().toISOString().split('T')[0];
     const storedDate = localStorage.getItem('lastPlayDate');
     const storedPlays = parseInt(localStorage.getItem('dailyPlays') || '0');
-    const today = new Date().toISOString().split('T')[0];
+    const storedUnlimited = localStorage.getItem('unlimitedDate') === today;
 
     if (storedDate !== today) {
-      setDailyPlays(0);
-      setLastPlayDate(today);
-      localStorage.setItem('dailyPlays', '0');
       localStorage.setItem('lastPlayDate', today);
+      localStorage.setItem('dailyPlays', '0');
+      localStorage.removeItem('unlimitedDate');
+      setLastPlayDate(today);
+      setDailyPlays(0);
+      setUnlimitedToday(false);
     } else {
+      setLastPlayDate(storedDate || '');
       setDailyPlays(storedPlays);
-      setLastPlayDate(storedDate);
+      setUnlimitedToday(storedUnlimited);
     }
   }, []);
 
-  // Timer effect
+  // Game timer countdown
   useEffect(() => {
-    if (timerActive && timer > 0) {
-      const interval = setInterval(() => setTimer((prev) => prev - 1), 1000);
+    if (timerActive && gameTimer > 0) {
+      const interval = setInterval(() => setGameTimer((prev) => prev - 1), 1000);
       return () => clearInterval(interval);
-    } else if (timer === 0 && timerActive) {
-      setTimerActive(false);
-      setCurrentNumber(null); // Miss turn
+    } else if (gameTimer === 0 && timerActive) {
+      stopAutoDraw();
+      alert('Time up! Game over.');
     }
-  }, [timer, timerActive]);
+  }, [timerActive, gameTimer]);
 
   // New: Call MiniKit setFrameReady() once the card is loaded
   useEffect(() => {
@@ -115,53 +127,83 @@ export default function BingoCard() {
     return () => clearTimeout(timer);
   }, []);
 
-  const resetGame = () => {
-    // Check daily limit
-    if (dailyPlays >= MAX_FREE_PLAYS && !unlimitedAccess) {
-      return; // Don't reset if limit reached
-    }
+  const startGame = () => {
+    if (!unlimitedToday && dailyPlays >= MAX_FREE_PLAYS) return;
 
+    resetGame();
+    setTimerActive(true);
+    startAutoDraw();
+
+    if (!unlimitedToday) {
+      const newPlays = dailyPlays + 1;
+      setDailyPlays(newPlays);
+      localStorage.setItem('dailyPlays', newPlays.toString());
+    }
+  };
+
+  const resetGame = () => {
     const newCard = generateBingoCard();
     setCard(newCard);
     setMarked(new Set(['22']));
     setCurrentNumber(null);
     setDrawnNumbers(new Set());
-    setIsWin(false);
-    setTimer(60);
+    setRecentDraws([]);
+    setWinInfo({ count: 0, types: [] });
+    setGameTimer(120);
     setTimerActive(false);
-    
-    // Increment daily plays
-    setDailyPlays((prev) => {
-      const newPlays = prev + 1;
-      localStorage.setItem('dailyPlays', newPlays.toString());
-      return newPlays;
-    });
-
+    if (autoDrawInterval) clearInterval(autoDrawInterval);
     console.log('New Game Started. Card:', newCard);
     console.log('Center (col 2, row 2):', newCard[2][2]); // Debug
   };
 
-  const drawNumber = () => {
-    let num: number;
-    do {
-      num = Math.floor(Math.random() * 75) + 1;
-    } while (drawnNumbers.has(num)); // Ensure unique
-    setDrawnNumbers((prev) => new Set([...prev, num]));
-    setCurrentNumber(num);
-    setTimer(60);
-    setTimerActive(true);
+  const startAutoDraw = () => {
+    const interval = setInterval(() => {
+      if (drawnNumbers.size >= 75 || gameTimer <= 0) {
+        stopAutoDraw();
+        return;
+      }
+
+      let num: number;
+      do {
+        num = Math.floor(Math.random() * 75) + 1;
+      } while (drawnNumbers.has(num));
+
+      setDrawnNumbers((prev) => new Set([...prev, num]));
+      setCurrentNumber(num);
+      setRecentDraws((prev) => {
+        const newDraws = [...prev, num].slice(-5); // Keep last 5
+        return newDraws;
+      });
+    }, 3500); // 3.5s interval
+
+    setAutoDrawInterval(interval);
+  };
+
+  const stopAutoDraw = () => {
+    if (autoDrawInterval) {
+      clearInterval(autoDrawInterval);
+      setAutoDrawInterval(null);
+    }
   };
 
   const markCell = (row: number, col: number) => {
     const num = card[col][row];
-    if (typeof num === 'number' && num === currentNumber) {
+    if (typeof num === 'number' && recentDraws.includes(num)) { // Allow marking any recent draw
       const pos = `${col}${row}`;
       setMarked((prev) => new Set([...prev, pos]));
-      setTimerActive(false); // Stop timer when number is marked
     }
   };
 
-  const handleShareForPlay = async () => {
+  useEffect(() => {
+    const newWin = checkWin(marked);
+    if (newWin.count > winInfo.count) {
+      setWinInfo(newWin);
+      // Tease escalating rewards
+      alert(`New win! ${newWin.types.join(' + ')} - Claim more $BINGO!`);
+    }
+  }, [marked, winInfo.count]);
+
+  const shareForExtraPlay = async () => {
     try {
       // Use openUrl to share on Farcaster
       await sdk.actions.openUrl('https://warpcast.com/~/compose?text=Just+playing+Based+Bingo—join+me!+https://based-bingo.vercel.app&embeds[]=https://based-bingo.vercel.app');
@@ -176,19 +218,13 @@ export default function BingoCard() {
     }
   };
 
-  const extendTimer = () => {
-    // Future: Add $BINGO token cost for extending timer
-    setTimer((prev) => prev + 30);
+  const payForUnlimited = () => {
+    // Future: Add $BINGO token cost for unlimited plays
+    setUnlimitedToday(true);
+    localStorage.setItem('unlimitedDate', new Date().toISOString().split('T')[0]);
   };
 
-  useEffect(() => {
-    if (checkWin(marked)) {
-      setIsWin(true);
-      setTimerActive(false);
-    }
-  }, [marked]);
-
-  const canPlay = dailyPlays < MAX_FREE_PLAYS || unlimitedAccess;
+  const canPlay = dailyPlays < MAX_FREE_PLAYS || unlimitedToday;
 
   return (
     <div className="text-center max-w-sm mx-auto"> {/* Responsive container */}
@@ -223,10 +259,16 @@ export default function BingoCard() {
           <div className="mt-2">
             <p className="text-red-500 text-sm mb-2">Daily limit reached!</p>
             <button
-              onClick={handleShareForPlay}
-              className="bg-purple-600 text-white px-4 py-2 rounded-lg text-sm font-bold hover:bg-purple-700"
+              onClick={shareForExtraPlay}
+              className="bg-purple-600 text-white px-4 py-2 rounded-lg text-sm font-bold hover:bg-purple-700 mr-2"
             >
               Share on Farcaster for +1 Play
+            </button>
+            <button
+              onClick={payForUnlimited}
+              className="bg-yellow-500 text-white px-4 py-2 rounded-lg text-sm font-bold hover:bg-yellow-600"
+            >
+              Pay 50 $BINGO for Unlimited
             </button>
           </div>
         )}
@@ -243,13 +285,15 @@ export default function BingoCard() {
             const num = card[col]?.[row] ?? '';
             const pos = `${col}${row}`;
             const isMarked = marked.has(pos) || (num === 'FREE' && pos === '22'); // Visually mark FREE
+            const isRecentDraw = typeof num === 'number' && recentDraws.includes(num);
             return (
               <button
                 key={pos}
                 onClick={() => markCell(row, col)}
-                className={`w-full aspect-square border-2 border-coinbase-blue flex items-center justify-center text-sm font-bold rounded
+                className={`w-full aspect-square border-2 border-coinbase-blue flex items-center justify-center text-sm font-bold rounded transition-all
                   ${isMarked ? 'bg-coinbase-blue text-white' : 'bg-white text-coinbase-blue hover:bg-blue-100'}
-                  ${num === 'FREE' ? 'text-xs rotate-[-45deg]' : ''}`}
+                  ${num === 'FREE' ? 'text-xs rotate-[-45deg]' : ''}
+                  ${isRecentDraw && !isMarked ? 'border-yellow-500 border-4 animate-pulse' : ''}`}
                 disabled={isMarked || (typeof num !== 'number' && num !== 'FREE')}
               >
                 {num}
@@ -259,37 +303,9 @@ export default function BingoCard() {
         )}
       </div>
 
-      {/* Timer display */}
-      {timerActive && (
-        <div className="mb-4">
-          <p className={`text-lg font-bold ${timer <= 10 ? 'text-red-500' : 'text-coinbase-blue'}`}>
-            Time left: {timer}s
-          </p>
-          {timer <= 10 && (
-            <button
-              onClick={extendTimer}
-              className="bg-yellow-500 text-white px-3 py-1 rounded text-sm font-bold hover:bg-yellow-600 mt-1"
-            >
-              +30s (10 $BINGO)
-            </button>
-          )}
-        </div>
-      )}
-
       <div className="flex justify-center gap-4 mb-2">
         <button
-          onClick={drawNumber}
-          className={`px-6 py-2 rounded-lg font-bold transition-all ${
-            isWin || drawnNumbers.size >= 75 || !canPlay
-              ? 'bg-gray-400 text-gray-600 cursor-not-allowed'
-              : 'bg-coinbase-blue text-white hover:bg-blue-600'
-          }`}
-          disabled={isWin || drawnNumbers.size >= 75 || !canPlay}
-        >
-          Draw Number
-        </button>
-        <button
-          onClick={resetGame}
+          onClick={startGame}
           className={`px-6 py-2 rounded-lg font-bold transition-all ${
             !canPlay
               ? 'bg-gray-400 text-gray-600 cursor-not-allowed'
@@ -297,11 +313,41 @@ export default function BingoCard() {
           }`}
           disabled={!canPlay}
         >
-          New Game
+          New Game ({unlimitedToday ? 'Unlimited' : MAX_FREE_PLAYS - dailyPlays} left)
         </button>
       </div>
-      {currentNumber && <p className="text-xl mt-2 text-coinbase-blue">Current Draw: {currentNumber}</p>}
-      {isWin && <p className="text-2xl font-bold text-coinbase-blue mt-4 animate-pulse">BINGO! You Win 100 $BINGO (coming soon!)</p>}
+
+      {/* Timer display */}
+      {timerActive && (
+        <p className="text-xl text-red-500 font-bold mb-2">
+          Time Left: {Math.floor(gameTimer / 60)}:{gameTimer % 60 < 10 ? '0' : ''}{gameTimer % 60}
+        </p>
+      )}
+
+      {/* Recent draws display (last 5, fade older) */}
+      {recentDraws.length > 0 && (
+        <div className="mb-4">
+          <p className="text-sm text-coinbase-blue mb-2">Recent Draws:</p>
+          <div className="flex justify-center gap-2">
+            {recentDraws.map((num, idx) => (
+              <div
+                key={idx}
+                className={`w-12 h-12 border-2 border-coinbase-blue flex items-center justify-center text-lg font-bold rounded transition-opacity ${
+                  idx < recentDraws.length - 1 ? 'opacity-50' : 'opacity-100'
+                }`}
+              >
+                {num}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {winInfo.types.length > 0 && (
+        <p className="text-2xl font-bold text-coinbase-blue mt-4 animate-pulse">
+          {winInfo.types.join(' + ')} ({winInfo.count} total)
+        </p>
+      )}
     </div>
   );
 }
