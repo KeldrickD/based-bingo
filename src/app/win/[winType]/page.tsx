@@ -1,7 +1,7 @@
 import { Metadata } from 'next';
 
-export async function generateMetadata({ params }: { params: { winType: string } }): Promise<Metadata> {
-  const { winType } = params; // e.g., 'line', 'double', 'full-house'
+export async function generateMetadata({ params }: { params: Promise<{ winType: string }> }): Promise<Metadata> {
+  const { winType } = await params; // e.g., 'line', 'double', 'full-house'
   
   // Format win type for display
   const displayWinType = winType
@@ -60,8 +60,8 @@ export async function generateMetadata({ params }: { params: { winType: string }
   };
 }
 
-export default function WinPage({ params }: { params: { winType: string } }) {
-  const { winType } = params;
+export default async function WinPage({ params }: { params: Promise<{ winType: string }> }) {
+  const { winType } = await params;
   
   // Format win type for display
   const displayWinType = winType

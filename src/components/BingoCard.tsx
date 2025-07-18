@@ -194,7 +194,7 @@ export default function BingoCard() {
     }
   };
 
-  const shareWin = async (winTypes: string[]) => {
+  const shareWin = useCallback(async (winTypes: string[]) => {
     if (isSharing) return; // Prevent multiple shares
     setIsSharing(true);
 
@@ -236,7 +236,7 @@ export default function BingoCard() {
     } finally {
       setIsSharing(false);
     }
-  };
+  }, [isSharing]);
 
   useEffect(() => {
     const newWin = checkWin(marked);
@@ -252,7 +252,7 @@ export default function BingoCard() {
         shareWin(newWin.types);
       }
     }
-  }, [marked, winInfo.count]);
+  }, [marked, winInfo.count, shareWin]);
 
   const shareForExtraPlay = async () => {
     try {
