@@ -364,7 +364,7 @@ export default function BingoCard() {
   const canPlay = dailyPlays < MAX_FREE_PLAYS || unlimitedToday;
 
   return (
-    <div className="text-center max-w-sm mx-auto"> {/* Responsive container */}
+    <div className="text-center max-w-sm mx-auto min-h-[600px] flex flex-col"> {/* Fixed height container */}
       {!isHydrated ? (
         <div className="mb-4 p-2 text-coinbase-blue">Loading...</div>
       ) : (
@@ -433,27 +433,33 @@ export default function BingoCard() {
       </div>
 
       {/* Recent draws display (moved to top, between title and card) */}
-      {recentDraws.length > 0 && (
-        <div className="mb-4">
-          <p className="text-sm text-coinbase-blue mb-2">Recent Draws:</p>
-          <div className="flex justify-center gap-2">
-            {recentDraws.map((num, idx) => (
-              <div
-                key={idx}
-                className={`w-12 h-12 border-2 border-coinbase-blue flex items-center justify-center text-lg font-bold rounded transition-opacity ${
-                  idx < recentDraws.length - 1 ? 'opacity-50' : 'opacity-100'
-                }`}
-              >
-                {num}
-              </div>
-            ))}
+      <div className="mb-4 min-h-[80px]"> {/* Fixed height to prevent layout shift */}
+        {recentDraws.length > 0 ? (
+          <>
+            <p className="text-sm text-coinbase-blue mb-2">Recent Draws:</p>
+            <div className="flex justify-center gap-2">
+              {recentDraws.map((num, idx) => (
+                <div
+                  key={idx}
+                  className={`w-12 h-12 border-2 border-coinbase-blue flex items-center justify-center text-lg font-bold rounded transition-opacity ${
+                    idx < recentDraws.length - 1 ? 'opacity-50' : 'opacity-100'
+                  }`}
+                >
+                  {num}
+                </div>
+              ))}
+            </div>
+          </>
+        ) : (
+          <div className="h-12 flex items-center justify-center">
+            <p className="text-sm text-gray-400">Waiting for draws...</p>
           </div>
-        </div>
-      )}
+        )}
+      </div>
 
-      <div ref={gridRef} className="grid grid-cols-5 gap-1 mb-4">
+      <div ref={gridRef} className="grid grid-cols-5 gap-1 mb-4 w-full max-w-sm mx-auto">
         {['B', 'I', 'N', 'G', 'O'].map((letter) => (
-          <div key={letter} className="font-bold text-coinbase-blue text-lg">
+          <div key={letter} className="font-bold text-coinbase-blue text-lg h-8 flex items-center justify-center">
             {letter}
           </div>
         ))}
@@ -467,10 +473,11 @@ export default function BingoCard() {
               <button
                 key={pos}
                 onClick={() => markCell(row, col)}
-                className={`w-full aspect-square border-2 border-coinbase-blue flex items-center justify-center text-sm font-bold rounded transition-all
-                  ${isMarked ? 'bg-coinbase-blue text-white' : 'bg-white text-coinbase-blue hover:bg-blue-100'}
-                  ${num === 'FREE' ? 'text-xs rotate-[-45deg]' : ''}
-                  ${isRecentDraw && !isMarked ? 'border-yellow-500 border-4 animate-pulse' : ''}`}
+                className={`w-full aspect-square border-2 border-coinbase-blue flex items-center justify-center text-sm font-bold rounded transition-all min-h-[48px] ${
+                  isMarked ? 'bg-coinbase-blue text-white' : 'bg-white text-coinbase-blue hover:bg-blue-100'
+                } ${num === 'FREE' ? 'text-xs rotate-[-45deg]' : ''} ${
+                  isRecentDraw && !isMarked ? 'border-yellow-500 border-4 animate-pulse' : ''
+                }`}
                 disabled={isMarked || (typeof num !== 'number' && num !== 'FREE') || !gameStarted}
               >
                 {num}
