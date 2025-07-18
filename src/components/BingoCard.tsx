@@ -1,9 +1,10 @@
 'use client'; // Client-side for state
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useAccount, useConnect } from 'wagmi';
 import { useMiniKit } from '@coinbase/onchainkit/minikit';
 import { sdk } from '@farcaster/miniapp-sdk';
+import { toPng } from 'html-to-image';
 
 function generateBingoCard() {
   const columnRanges = [
@@ -63,6 +64,7 @@ export default function BingoCard() {
   const [timerActive, setTimerActive] = useState(false);
   const [autoDrawInterval, setAutoDrawInterval] = useState<NodeJS.Timeout | null>(null);
   const [isHydrated, setIsHydrated] = useState(false);
+  const [isSharing, setIsSharing] = useState(false);
 
   // Daily limits (from before)
   const [dailyPlays, setDailyPlays] = useState(0);
@@ -73,6 +75,9 @@ export default function BingoCard() {
   const { connect, connectors, error: connectError } = useConnect();
   const miniKit = useMiniKit();
 
+  // Refs for card snapshot
+  const gridRef = useRef<HTMLDivElement>(null);
+
   const resetGame = useCallback(() => {
     const newCard = generateBingoCard();
     setCard(newCard);
@@ -82,6 +87,7 @@ export default function BingoCard() {
     setWinInfo({ count: 0, types: [] });
     setGameTimer(120);
     setTimerActive(false);
+    setIsSharing(false);
     if (autoDrawInterval) clearInterval(autoDrawInterval);
     console.log('New Game Started. Card:', newCard);
     console.log('Center (col 2, row 2):', newCard[2][2]); // Debug
@@ -188,12 +194,63 @@ export default function BingoCard() {
     }
   };
 
+  const shareWin = async (winTypes: string[]) => {
+    if (isSharing) return; // Prevent multiple shares
+    setIsSharing(true);
+
+    try {
+      // Generate card snapshot
+      if (gridRef.current) {
+        const dataUrl = await toPng(gridRef.current, {
+          quality: 0.95,
+          backgroundColor: '#ffffff',
+        });
+        console.log('Win card snapshot generated:', dataUrl);
+        // In production, upload this to IPFS or your image service
+        // For now, we'll use a placeholder
+      }
+
+      // Generate share URL
+      const winType = winTypes[winTypes.length - 1]
+        .toLowerCase()
+        .replace(/!/g, '')
+        .replace(/\s/g, '-'); // e.g., 'full-house'
+      const shareUrl = `https://based-bingo.vercel.app/win/${winType}`;
+
+      // Auto-cast the win
+      await sdk.actions.openUrl(
+        `https://warpcast.com/~/compose?text=Just+got+${winTypes.join('+%2B+')}+in+Based+Bingo!+Won+$BINGO—play+now!&embeds[]=${encodeURIComponent(shareUrl)}`
+      );
+
+      // Grant extra play for sharing
+      setDailyPlays((prev) => {
+        const newPlays = Math.max(0, prev - 1); // Reduce by 1 to allow another play
+        localStorage.setItem('dailyPlays', newPlays.toString());
+        return newPlays;
+      });
+
+      alert(`Win shared! You got +1 play for sharing!`);
+    } catch (error) {
+      console.error('Failed to share win:', error);
+      alert('Failed to share win. You can still play!');
+    } finally {
+      setIsSharing(false);
+    }
+  };
+
   useEffect(() => {
     const newWin = checkWin(marked);
     if (newWin.count > winInfo.count) {
       setWinInfo(newWin);
-      // Tease escalating rewards
-      alert(`New win! ${newWin.types.join(' + ')} - Claim more $BINGO!`);
+      
+      // Prompt to share the win
+      const shouldShare = confirm(
+        `🎉 New win! ${newWin.types.join(' + ')} - Claim more $BINGO!\n\nShare your victory on Farcaster for +1 play?`
+      );
+      
+      if (shouldShare) {
+        shareWin(newWin.types);
+      }
     }
   }, [marked, winInfo.count]);
 
@@ -268,7 +325,7 @@ export default function BingoCard() {
         )}
       </div>
 
-      <div className="grid grid-cols-5 gap-1 mb-4">
+      <div ref={gridRef} className="grid grid-cols-5 gap-1 mb-4">
         {['B', 'I', 'N', 'G', 'O'].map((letter) => (
           <div key={letter} className="font-bold text-coinbase-blue text-lg">
             {letter}
@@ -338,9 +395,22 @@ export default function BingoCard() {
       )}
 
       {winInfo.types.length > 0 && (
-        <p className="text-2xl font-bold text-coinbase-blue mt-4 animate-pulse">
-          {winInfo.types.join(' + ')} ({winInfo.count} total)
-        </p>
+        <div className="mt-4">
+          <p className="text-2xl font-bold text-coinbase-blue animate-pulse mb-2">
+            {winInfo.types.join(' + ')} ({winInfo.count} total)
+          </p>
+          {!isSharing && (
+            <button
+              onClick={() => shareWin(winInfo.types)}
+              className="bg-green-600 text-white px-4 py-2 rounded-lg text-sm font-bold hover:bg-green-700"
+            >
+              Share Win on Farcaster (+1 Play)
+            </button>
+          )}
+          {isSharing && (
+            <p className="text-sm text-green-600">Sharing win...</p>
+          )}
+        </div>
       )}
     </div>
   );
