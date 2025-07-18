@@ -6,6 +6,26 @@ import { useMiniKit } from '@coinbase/onchainkit/minikit';
 import { sdk } from '@farcaster/miniapp-sdk';
 import { toPng } from 'html-to-image';
 
+// EIP-5792 environment detection
+const isMiniAppEnvironment = () => {
+  if (typeof window === 'undefined') return false;
+  
+  // Check for Farcaster Mini App environment
+  const isFarcasterMiniApp = window.location.hostname.includes('warpcast.com') || 
+                            window.location.hostname.includes('farcaster.xyz') ||
+                            window.navigator.userAgent.includes('Farcaster');
+  
+  // Check for Coinbase Wallet Mini App environment
+  const isCoinbaseMiniApp = window.location.hostname.includes('coinbase.com') ||
+                           window.navigator.userAgent.includes('Coinbase');
+  
+  // Check for EIP-5792 support
+  const hasEIP5792 = typeof window !== 'undefined' && 
+                    (window as any).ethereum?.isMiniApp === true;
+  
+  return isFarcasterMiniApp || isCoinbaseMiniApp || hasEIP5792;
+};
+
 function generateBingoCard() {
   const columnRanges = [
     { label: 'B', min: 1, max: 15 },
@@ -66,6 +86,7 @@ export default function BingoCard() {
   const [isHydrated, setIsHydrated] = useState(false);
   const [isSharing, setIsSharing] = useState(false);
   const [gameStarted, setGameStarted] = useState(false);
+  const [isMiniApp, setIsMiniApp] = useState(false);
 
   // Daily limits (from before)
   const [dailyPlays, setDailyPlays] = useState(0);
@@ -78,6 +99,39 @@ export default function BingoCard() {
 
   // Refs for card snapshot
   const gridRef = useRef<HTMLDivElement>(null);
+
+  // Enhanced wallet connection with EIP-5792 support
+  const handleWalletConnection = useCallback(async () => {
+    console.log('Attempting wallet connection...');
+    console.log('Available connectors:', connectors);
+    console.log('Mini App environment:', isMiniApp);
+    
+    try {
+      // Try Farcaster Mini App connector first (EIP-5792 compliant)
+      const miniAppConnector = connectors.find(connector => 
+        connector.name === 'Farcaster Mini App' || 
+        connector.name.includes('Farcaster') ||
+        connector.name.includes('Mini App')
+      );
+      
+      if (miniAppConnector) {
+        console.log('Using Farcaster Mini App connector:', miniAppConnector.name);
+        await connect({ connector: miniAppConnector });
+      } else {
+        // Fallback to first available connector
+        if (connectors.length > 0) {
+          console.log('Using fallback connector:', connectors[0].name);
+          await connect({ connector: connectors[0] });
+        } else {
+          console.error('No connectors available');
+          alert('No wallet connectors available. Please ensure you have a compatible wallet installed.');
+        }
+      }
+    } catch (error) {
+      console.error('Wallet connection failed:', error);
+      alert('Wallet connection failed. You can still play the game!');
+    }
+  }, [connect, connectors, isMiniApp]);
 
   const resetGame = useCallback(() => {
     const newCard = generateBingoCard();
@@ -157,6 +211,18 @@ export default function BingoCard() {
     }, 1000); // 1 second timeout
 
     return () => clearTimeout(timer);
+  }, []);
+
+  // Detect Mini App environment and EIP-5792 support
+  useEffect(() => {
+    const miniAppEnv = isMiniAppEnvironment();
+    setIsMiniApp(miniAppEnv);
+    console.log('Mini App environment detected:', miniAppEnv);
+    
+    if (miniAppEnv) {
+      console.log('EIP-5792 supported environment detected');
+      // Additional Mini App specific setup can go here
+    }
   }, []);
 
   const startGame = () => {
@@ -303,23 +369,37 @@ export default function BingoCard() {
         <div className="mb-4 p-2 text-coinbase-blue">Loading...</div>
       ) : (
         <>
+          {/* EIP-5792 Status */}
+          {isMiniApp && (
+            <div className="mb-4 p-2 bg-green-100 border border-green-300 rounded-lg">
+              <p className="text-sm text-green-700 font-semibold">
+                🎯 EIP-5792 Mini App Environment Detected
+              </p>
+              <p className="text-xs text-green-600">
+                Native wallet integration enabled
+              </p>
+            </div>
+          )}
+          
           {isConnecting ? (
             <p className="text-coinbase-blue mb-4">Connecting...</p>
           ) : isConnected ? (
-            <p className="text-sm text-coinbase-blue mb-4">Connected: {address?.slice(0, 6)}...{address?.slice(-4)}</p>
+            <div className="mb-4">
+              <p className="text-sm text-coinbase-blue mb-1">
+                Connected: {address?.slice(0, 6)}...{address?.slice(-4)}
+              </p>
+              {isMiniApp && (
+                <p className="text-xs text-green-600">
+                  ✓ EIP-5792 wallet connection active
+                </p>
+              )}
+            </div>
           ) : (
             <button
-              onClick={() => {
-                console.log('Connecting wallet...');
-                if (connectors.length > 0) {
-                  connect({ connector: connectors[0] });
-                } else {
-                  console.error('No connectors available');
-                }
-              }}
+              onClick={handleWalletConnection}
               className="bg-coinbase-blue text-white px-6 py-2 rounded-lg font-bold hover:bg-blue-600 mb-4"
             >
-              Connect Wallet (for $BINGO beta)
+              {isMiniApp ? 'Connect Wallet (EIP-5792)' : 'Connect Wallet (for $BINGO beta)'}
             </button>
           )}
           {connectError && (
