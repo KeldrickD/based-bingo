@@ -265,6 +265,7 @@ export default function BingoCard() {
       } while (drawnNumbers.has(num));
 
       console.log('Drawing first number:', num);
+      console.log('Current drawn numbers:', Array.from(drawnNumbers));
       setDrawnNumbers((prev) => new Set([...prev, num]));
       setRecentDraws((prev) => {
         const newDraws = [...prev, num].slice(-5); // Keep last 5
@@ -277,21 +278,27 @@ export default function BingoCard() {
     
     // Then set up interval for subsequent draws
     const interval = setInterval(() => {
-      if (drawnNumbers.size >= 75 || gameTimer <= 0) {
-        stopAutoDraw();
-        return;
-      }
+      setDrawnNumbers((currentDrawnNumbers) => {
+        if (currentDrawnNumbers.size >= 75 || gameTimer <= 0) {
+          stopAutoDraw();
+          return currentDrawnNumbers;
+        }
 
-      let num: number;
-      do {
-        num = Math.floor(Math.random() * 75) + 1;
-      } while (drawnNumbers.has(num));
+        let num: number;
+        do {
+          num = Math.floor(Math.random() * 75) + 1;
+        } while (currentDrawnNumbers.has(num));
 
-      console.log('Drawing number:', num);
-      setDrawnNumbers((prev) => new Set([...prev, num]));
-      setRecentDraws((prev) => {
-        const newDraws = [...prev, num].slice(-5); // Keep last 5
-        return newDraws;
+        console.log('Drawing number:', num);
+        console.log('Current drawn numbers:', Array.from(currentDrawnNumbers));
+        const newDrawnNumbers = new Set([...currentDrawnNumbers, num]);
+        
+        setRecentDraws((prev) => {
+          const newDraws = [...prev, num].slice(-5); // Keep last 5
+          return newDraws;
+        });
+        
+        return newDrawnNumbers;
       });
     }, 2500); // 2.5s interval (faster than before)
 
@@ -466,7 +473,9 @@ export default function BingoCard() {
       <div className="mb-4 min-h-[80px]"> {/* Fixed height to prevent layout shift */}
         {recentDraws.length > 0 ? (
           <>
-            <p className="text-sm text-coinbase-blue mb-2">Recent Draws:</p>
+            <p className="text-sm text-coinbase-blue mb-2">
+              Recent Draws: ({drawnNumbers.size}/75 total)
+            </p>
             <div className="flex justify-center gap-2">
               {recentDraws.map((num, idx) => (
                 <div
