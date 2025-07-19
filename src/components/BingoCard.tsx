@@ -97,8 +97,9 @@ export default function BingoCard() {
   const { connect, connectors, error: connectError } = useConnect();
   const miniKit = useMiniKit();
 
-  // Refs for card snapshot
+  // Refs for card snapshot and interval tracking
   const gridRef = useRef<HTMLDivElement>(null);
+  const intervalRef = useRef<NodeJS.Timeout | null>(null);
 
   // Enhanced wallet connection with EIP-5792 support
   const handleWalletConnection = useCallback(async () => {
@@ -135,8 +136,10 @@ export default function BingoCard() {
 
   const resetGame = useCallback(() => {
     // Clear any existing interval first
-    if (autoDrawInterval) {
-      clearInterval(autoDrawInterval);
+    if (intervalRef.current) {
+      console.log('Game reset: clearing interval:', intervalRef.current);
+      clearInterval(intervalRef.current);
+      intervalRef.current = null;
       setAutoDrawInterval(null);
     }
     
@@ -153,14 +156,16 @@ export default function BingoCard() {
     
     console.log('Game Reset. Card:', newCard);
     console.log('Center (col 2, row 2):', newCard[2][2]); // Debug
-  }, [autoDrawInterval]);
+  }, []);
 
   const stopAutoDraw = useCallback(() => {
-    if (autoDrawInterval) {
-      clearInterval(autoDrawInterval);
+    if (intervalRef.current) {
+      console.log('Stopping auto-draw, clearing interval:', intervalRef.current);
+      clearInterval(intervalRef.current);
+      intervalRef.current = null;
       setAutoDrawInterval(null);
     }
-  }, [autoDrawInterval]);
+  }, []);
 
   // Initialize card on mount (but don't start game)
   useEffect(() => {
@@ -252,8 +257,16 @@ export default function BingoCard() {
   const startAutoDraw = () => {
     console.log('Starting auto-draw...');
     
+    // Clear any existing interval using ref
+    if (intervalRef.current) {
+      console.log('Clearing existing interval:', intervalRef.current);
+      clearInterval(intervalRef.current);
+      intervalRef.current = null;
+    }
+    
     // Create a function to draw a number
     const drawNumber = () => {
+      console.log('Draw function called at:', new Date().toISOString());
       setDrawnNumbers((currentDrawnNumbers) => {
         if (currentDrawnNumbers.size >= 75 || gameTimer <= 0) {
           stopAutoDraw();
@@ -278,9 +291,11 @@ export default function BingoCard() {
       });
     };
 
-    // Start interval immediately - first draw will happen after 2.5 seconds
+    // Start interval - first draw will happen after 2.5 seconds
     const interval = setInterval(drawNumber, 2500);
+    intervalRef.current = interval;
     setAutoDrawInterval(interval);
+    console.log('Auto-draw interval set with ID:', interval);
   };
 
   const markCell = (row: number, col: number) => {
