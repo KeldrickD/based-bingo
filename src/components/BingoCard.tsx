@@ -278,8 +278,10 @@ export default function BingoCard() {
       });
     };
 
-    // Draw first number immediately
-    drawNumber();
+    // Draw first number after a small delay (100ms)
+    setTimeout(() => {
+      drawNumber();
+    }, 100);
     
     // Start interval for subsequent draws after 2.5 seconds
     setTimeout(() => {
