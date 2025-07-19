@@ -278,16 +278,9 @@ export default function BingoCard() {
       });
     };
 
-    // Draw first number after a small delay (100ms)
-    setTimeout(() => {
-      drawNumber();
-    }, 100);
-    
-    // Start interval for subsequent draws after 2.5 seconds
-    setTimeout(() => {
-      const interval = setInterval(drawNumber, 2500);
-      setAutoDrawInterval(interval);
-    }, 2500);
+    // Start interval immediately - first draw will happen after 2.5 seconds
+    const interval = setInterval(drawNumber, 2500);
+    setAutoDrawInterval(interval);
   };
 
   const markCell = (row: number, col: number) => {
@@ -349,17 +342,8 @@ export default function BingoCard() {
     const newWin = checkWin(marked);
     if (newWin.count > winInfo.count) {
       setWinInfo(newWin);
-      
-      // Prompt to share the win
-      const shouldShare = confirm(
-        `🎉 New win! ${newWin.types.join(' + ')} - Claim more $BINGO!\n\nShare your victory on Farcaster for +1 play?`
-      );
-      
-      if (shouldShare) {
-        shareWin(newWin.types);
-      }
     }
-  }, [marked, winInfo.count, shareWin]);
+  }, [marked, winInfo.count]);
 
   const shareForExtraPlay = async () => {
     try {
