@@ -281,10 +281,11 @@ export default function BingoCard() {
     // Draw first number immediately
     drawNumber();
     
-    // Set up interval for subsequent draws
-    const interval = setInterval(drawNumber, 2500); // 2.5s interval
-
-    setAutoDrawInterval(interval);
+    // Start interval for subsequent draws after 2.5 seconds
+    setTimeout(() => {
+      const interval = setInterval(drawNumber, 2500);
+      setAutoDrawInterval(interval);
+    }, 2500);
   };
 
   const markCell = (row: number, col: number) => {
