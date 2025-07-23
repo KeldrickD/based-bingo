@@ -21,7 +21,7 @@ const isMiniAppEnvironment = () => {
   
   // Check for EIP-5792 support
   const hasEIP5792 = typeof window !== 'undefined' && 
-                    (window as any).ethereum?.isMiniApp === true;
+                  (window as unknown as { ethereum?: { isMiniApp?: boolean } })?.ethereum?.isMiniApp === true;
   
   return isFarcasterMiniApp || isCoinbaseMiniApp || hasEIP5792;
 };
@@ -259,7 +259,7 @@ export default function BingoCard() {
 
   const drawNumber = useCallback(() => {
     console.log('Draw function called at:', new Date().toISOString());
-    setDrawnNumbers((currentDrawnNumbers) => {
+    setDrawnNumbers((currentDrawnNumbers: Set<number>) => {
       if (currentDrawnNumbers.size >= 75 || gameTimerRef.current <= 0) {
         if (intervalRef.current) {
           clearInterval(intervalRef.current);
@@ -305,7 +305,7 @@ export default function BingoCard() {
       intervalRef.current = null;
       isDrawingActiveRef.current = false;
     };
-  }, [gameStarted, timerActive, startTrigger]);
+  }, [gameStarted, timerActive, startTrigger, drawNumber]);
 
   const markCell = (row: number, col: number) => {
     if (!gameStarted) return; // Can't mark if game hasn't started
