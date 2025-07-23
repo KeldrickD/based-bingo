@@ -1,1 +1,40 @@
- 
+<svg width="1024" height="1024" viewBox="0 0 1024 1024" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- Background -->
+  <rect width="1024" height="1024" fill="#0052FF"/>
+  
+  <!-- Bingo Card Grid -->
+  <g transform="translate(200, 200)">
+    <!-- BINGO Letters -->
+    <text x="50" y="80" font-family="Arial, sans-serif" font-size="48" font-weight="bold" fill="white">B</text>
+    <text x="150" y="80" font-family="Arial, sans-serif" font-size="48" font-weight="bold" fill="white">I</text>
+    <text x="250" y="80" font-family="Arial, sans-serif" font-size="48" font-weight="bold" fill="white">N</text>
+    <text x="350" y="80" font-family="Arial, sans-serif" font-size="48" font-weight="bold" fill="white">G</text>
+    <text x="450" y="80" font-family="Arial, sans-serif" font-size="48" font-weight="bold" fill="white">O</text>
+    
+    <!-- Grid Lines -->
+    <rect x="20" y="100" width="500" height="400" stroke="white" stroke-width="4" fill="none"/>
+    
+    <!-- Vertical Lines -->
+    <line x1="120" y1="100" x2="120" y2="500" stroke="white" stroke-width="2"/>
+    <line x1="220" y1="100" x2="220" y2="500" stroke="white" stroke-width="2"/>
+    <line x1="320" y1="100" x2="320" y2="500" stroke="white" stroke-width="2"/>
+    <line x1="420" y1="100" x2="420" y2="500" stroke="white" stroke-width="2"/>
+    
+    <!-- Horizontal Lines -->
+    <line x1="20" y1="180" x2="520" y2="180" stroke="white" stroke-width="2"/>
+    <line x1="20" y1="260" x2="520" y2="260" stroke="white" stroke-width="2"/>
+    <line x1="20" y1="340" x2="520" y2="340" stroke="white" stroke-width="2"/>
+    <line x1="20" y1="420" x2="520" y2="420" stroke="white" stroke-width="2"/>
+    
+    <!-- Sample Numbers -->
+    <text x="70" y="150" font-family="Arial, sans-serif" font-size="24" fill="white">7</text>
+    <text x="170" y="150" font-family="Arial, sans-serif" font-size="24" fill="white">22</text>
+    <text x="270" y="150" font-family="Arial, sans-serif" font-size="24" fill="white">FREE</text>
+    <text x="370" y="150" font-family="Arial, sans-serif" font-size="24" fill="white">51</text>
+    <text x="470" y="150" font-family="Arial, sans-serif" font-size="24" fill="white">68</text>
+  </g>
+  
+  <!-- Based Bingo Text -->
+  <text x="512" y="700" font-family="Arial, sans-serif" font-size="64" font-weight="bold" fill="white" text-anchor="middle">Based Bingo</text>
+  <text x="512" y="780" font-family="Arial, sans-serif" font-size="32" fill="white" text-anchor="middle">🎲 Win $BINGO 🎲</text>
+</svg> 

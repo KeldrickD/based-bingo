@@ -82,11 +82,11 @@ export default function BingoCard() {
   const [winInfo, setWinInfo] = useState<{ count: number; types: string[] }>({ count: 0, types: [] });
   const [gameTimer, setGameTimer] = useState(120); // 2 mins
   const [timerActive, setTimerActive] = useState(false);
-  const [autoDrawInterval, setAutoDrawInterval] = useState<NodeJS.Timeout | null>(null);
   const [isHydrated, setIsHydrated] = useState(false);
   const [isSharing, setIsSharing] = useState(false);
   const [gameStarted, setGameStarted] = useState(false);
   const [isMiniApp, setIsMiniApp] = useState(false);
+  const [startTrigger, setStartTrigger] = useState(0);
 
   // Daily limits (from before)
   const [dailyPlays, setDailyPlays] = useState(0);
@@ -100,6 +100,8 @@ export default function BingoCard() {
   // Refs for card snapshot and interval tracking
   const gridRef = useRef<HTMLDivElement>(null);
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
+  const gameTimerRef = useRef(gameTimer);
+  const isDrawingActiveRef = useRef(false);
 
   // Enhanced wallet connection with EIP-5792 support
   const handleWalletConnection = useCallback(async () => {
@@ -140,8 +142,8 @@ export default function BingoCard() {
       console.log('Game reset: clearing interval:', intervalRef.current);
       clearInterval(intervalRef.current);
       intervalRef.current = null;
-      setAutoDrawInterval(null);
     }
+    isDrawingActiveRef.current = false;
     
     const newCard = generateBingoCard();
     setCard(newCard);
@@ -163,7 +165,6 @@ export default function BingoCard() {
       console.log('Stopping auto-draw, clearing interval:', intervalRef.current);
       clearInterval(intervalRef.current);
       intervalRef.current = null;
-      setAutoDrawInterval(null);
     }
   }, []);
 
@@ -205,6 +206,10 @@ export default function BingoCard() {
     }
   }, [timerActive, gameTimer, stopAutoDraw]);
 
+  useEffect(() => {
+    gameTimerRef.current = gameTimer;
+  }, [gameTimer]);
+
   // New: Call MiniKit setFrameReady() once the card is loaded
   useEffect(() => {
     if (card.length > 0) { // Ensure app is ready (card generated)
@@ -243,10 +248,8 @@ export default function BingoCard() {
     resetGame();
     setGameStarted(true);
     setTimerActive(true);
+    setStartTrigger((prev) => prev + 1);
     
-    // Start auto-draw immediately
-    startAutoDraw();
-
     if (!unlimitedToday) {
       const newPlays = dailyPlays + 1;
       setDailyPlays(newPlays);
@@ -254,49 +257,55 @@ export default function BingoCard() {
     }
   };
 
-  const startAutoDraw = () => {
-    console.log('Starting auto-draw...');
-    
-    // Clear any existing interval using ref
-    if (intervalRef.current) {
-      console.log('Clearing existing interval:', intervalRef.current);
-      clearInterval(intervalRef.current);
-      intervalRef.current = null;
-    }
-    
-    // Create a function to draw a number
-    const drawNumber = () => {
-      console.log('Draw function called at:', new Date().toISOString());
-      setDrawnNumbers((currentDrawnNumbers) => {
-        if (currentDrawnNumbers.size >= 75 || gameTimer <= 0) {
-          stopAutoDraw();
-          return currentDrawnNumbers;
+  const drawNumber = useCallback(() => {
+    console.log('Draw function called at:', new Date().toISOString());
+    setDrawnNumbers((currentDrawnNumbers) => {
+      if (currentDrawnNumbers.size >= 75 || gameTimerRef.current <= 0) {
+        if (intervalRef.current) {
+          clearInterval(intervalRef.current);
+          intervalRef.current = null;
+          isDrawingActiveRef.current = false;
         }
+        return currentDrawnNumbers;
+      }
 
-        let num: number;
-        do {
-          num = Math.floor(Math.random() * 75) + 1;
-        } while (currentDrawnNumbers.has(num));
+      let num: number;
+      do {
+        num = Math.floor(Math.random() * 75) + 1;
+      } while (currentDrawnNumbers.has(num));
 
-        console.log('Drawing number:', num);
-        console.log('Current drawn numbers:', Array.from(currentDrawnNumbers));
-        const newDrawnNumbers = new Set([...currentDrawnNumbers, num]);
-        
-        setRecentDraws((prev) => {
-          const newDraws = [...prev, num].slice(-5); // Keep last 5
-          return newDraws;
-        });
-        
-        return newDrawnNumbers;
+      console.log('Drawing number:', num);
+      console.log('Current drawn numbers:', Array.from(currentDrawnNumbers));
+      const newDrawnNumbers = new Set([...currentDrawnNumbers, num]);
+      
+      setRecentDraws((prev) => {
+        const newDraws = [...prev, num].slice(-5); // Keep last 5
+        return newDraws;
       });
-    };
+      
+      return newDrawnNumbers;
+    });
+  }, []);
 
-    // Start interval - first draw will happen after 2.5 seconds
-    const interval = setInterval(drawNumber, 2500);
+  useEffect(() => {
+    if (!gameStarted || !timerActive || isDrawingActiveRef.current) return;
+
+    console.log('Starting new drawing interval');
+    isDrawingActiveRef.current = true;
+    
+    // Draw first number immediately
+    drawNumber();
+    
+    const interval = setInterval(drawNumber, 5000);
     intervalRef.current = interval;
-    setAutoDrawInterval(interval);
-    console.log('Auto-draw interval set with ID:', interval);
-  };
+
+    return () => {
+      console.log('Cleaning up drawing interval');
+      clearInterval(interval);
+      intervalRef.current = null;
+      isDrawingActiveRef.current = false;
+    };
+  }, [gameStarted, timerActive, startTrigger]);
 
   const markCell = (row: number, col: number) => {
     if (!gameStarted) return; // Can't mark if game hasn't started
