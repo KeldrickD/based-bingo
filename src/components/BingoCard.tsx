@@ -1,7 +1,6 @@
 'use client'; // Client-side for state
 
 import React, { useState, useEffect, useRef } from 'react';
-import { sdk } from '@farcaster/miniapp-sdk'; // For shares
 import { toPng } from 'html-to-image'; // For win snapshots
 import { useAccount, useWriteContract } from 'wagmi';
 import basedBingoABI from '@/abis/BasedBingo.json';
@@ -50,7 +49,7 @@ function checkWin(marked: Set<string>): { count: number; types: string[] } {
 
   const completed = positions.filter((line) => line.every((pos) => marked.has(pos) || pos === '22'));
   const count = completed.length;
-  let types: string[] = [];
+  const types: string[] = [];
   if (count >= 1) types.push('Line Bingo!');
   if (count >= 2) types.push('Double Line!');
   if (count === 12) types.push('Full House!');
@@ -63,7 +62,6 @@ export default function BingoCard() {
   const { writeContract } = useWriteContract();
   const [card, setCard] = useState<(number | string)[][]>([]);
   const [marked, setMarked] = useState<Set<string>>(new Set(['22']));
-  const [currentNumber, setCurrentNumber] = useState<number | null>(null);
   const [drawnNumbers, setDrawnNumbers] = useState<Set<number>>(new Set());
   const [recentDraws, setRecentDraws] = useState<number[]>([]);
   const [winInfo, setWinInfo] = useState<{ count: number; types: string[] }>({ count: 0, types: [] });
@@ -117,7 +115,7 @@ export default function BingoCard() {
       setTimerActive(false);
       alert('Time up! Game over.');
     }
-  }, [timerActive, gameTimer, autoDrawInterval]);
+  }, [timerActive, gameTimer, autoDrawInterval, stopAutoDraw]);
 
   const startGame = () => {
     if (!unlimitedToday && dailyPlays >= MAX_FREE_PLAYS) {
@@ -149,7 +147,7 @@ export default function BingoCard() {
     const newCard = generateBingoCard();
     setCard(newCard);
     setMarked(new Set(['22']));
-    setCurrentNumber(null);
+
     setDrawnNumbers(new Set());
     setRecentDraws([]);
     setWinInfo({ count: 0, types: [] });
@@ -173,7 +171,7 @@ export default function BingoCard() {
 
         const newDrawnNumbers = new Set([...prevDrawnNumbers, num]);
         
-        setCurrentNumber(num);
+
         setRecentDraws((prev) => {
           const newDraws = [...prev, num].slice(-5); // Keep last 5
           return newDraws;
