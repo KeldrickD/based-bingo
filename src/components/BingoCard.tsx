@@ -151,20 +151,17 @@ export default function BingoCard() {
         return;
       }
 
-      let num1: number, num2: number;
+      let num: number;
       do {
-        num1 = Math.floor(Math.random() * 75) + 1;
-      } while (drawnNumbers.has(num1));
-      do {
-        num2 = Math.floor(Math.random() * 75) + 1;
-      } while (drawnNumbers.has(num2) || num2 === num1);
+        num = Math.floor(Math.random() * 75) + 1;
+      } while (drawnNumbers.has(num));
 
-      setDrawnNumbers((prev) => new Set([...prev, num1, num2]));
+      setDrawnNumbers((prev) => new Set([...prev, num]));
       setRecentDraws((prev) => {
-        const newDraws = [...prev, num1, num2].slice(-5); // Keep last 5
+        const newDraws = [...prev, num].slice(-5); // Keep last 5
         return newDraws;
       });
-    }, 3000); // 3s interval for two numbers
+    }, 3000); // 3s interval for one number
 
     setAutoDrawInterval(interval);
   };
