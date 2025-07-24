@@ -10,7 +10,7 @@ export async function generateMetadata({ params }: { params: Promise<{ winType: 
     .join(' ');
   
   // Use dynamic image generation
-  const previewImage = `https://based-bingo.vercel.app/api/generate-win-image?type=${winType}&count=1`;
+  const previewImage = `https://basedbingo.xyz/api/generate-win-image?type=${winType}&count=1`;
 
   return {
     title: `I Won ${displayWinType} in Based Bingo!`,
@@ -39,7 +39,7 @@ export async function generateMetadata({ params }: { params: Promise<{ winType: 
           action: {
             type: 'launch_frame',
             name: 'play',
-            url: 'https://based-bingo.vercel.app',
+            url: 'https://basedbingo.xyz',
           },
         },
       }),
@@ -52,7 +52,7 @@ export async function generateMetadata({ params }: { params: Promise<{ winType: 
           action: {
             type: 'launch_frame',
             name: 'play',
-            url: 'https://based-bingo.vercel.app',
+            url: 'https://basedbingo.xyz',
           },
         },
       }),
@@ -79,7 +79,7 @@ export default async function WinPage({ params }: { params: Promise<{ winType: s
         </p>
         <div className="space-y-4">
           <a
-            href="https://based-bingo.vercel.app"
+            href="https://basedbingo.xyz"
             className="block bg-white text-coinbase-blue px-8 py-4 rounded-lg font-bold text-lg hover:bg-gray-100 transition-colors"
           >
             Play Based Bingo

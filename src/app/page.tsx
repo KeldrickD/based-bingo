@@ -11,26 +11,26 @@ export const metadata: Metadata = {
     'fc:miniapp': JSON.stringify({
       version: '1',
       name: 'Based Bingo',  // Required top-level: App name (max 32 chars)
-      imageUrl: 'https://based-bingo.vercel.app/preview.png',  // 3:2 ratio recommended
+      imageUrl: 'https://basedbingo.xyz/preview.png',  // 3:2 ratio recommended
       button: {
         title: 'Play Based Bingo',  // Max 32 chars
         action: {
           type: 'launch_frame',
           name: 'launch',  // Add this for Action validation (short identifier, e.g., "play" or "open")
-          url: 'https://based-bingo.vercel.app',
+          url: 'https://basedbingo.xyz',
         },
       },
     }),
     'fc:frame': JSON.stringify({  // Backward compatibility fallback
       version: '1',
       name: 'Based Bingo',
-      imageUrl: 'https://based-bingo.vercel.app/preview.png',
+      imageUrl: 'https://basedbingo.xyz/preview.png',
       button: {
         title: 'Play Based Bingo',
         action: {
           type: 'launch_frame',
           name: 'launch',
-          url: 'https://based-bingo.vercel.app',
+          url: 'https://basedbingo.xyz',
         },
       },
     }),

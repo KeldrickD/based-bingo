@@ -14,7 +14,7 @@ export const config = createConfig({
     // Fallback: Coinbase Wallet connector for non-Mini App environments
     coinbaseWallet({
       appName: 'Based Bingo',
-      appLogoUrl: 'https://based-bingo.vercel.app/icon.png',
+      appLogoUrl: 'https://basedbingo.xyz/icon.png',
       chainId: base.id
     })
   ]

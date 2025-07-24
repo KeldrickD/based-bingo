@@ -9,24 +9,24 @@ export async function GET() {
       description: "A fun, free Bingo game native to Farcaster and Coinbase Wallet. Mark your card, draw numbers, and win mock BINGO - real payouts coming soon on Base!",
       primaryCategory: "games",
       screenshotUrls: [
-        "https://based-bingo.vercel.app/screenshot1.png",
-        "https://based-bingo.vercel.app/screenshot2.png"
+              "https://basedbingo.xyz/screenshot1.png",
+      "https://basedbingo.xyz/screenshot2.png"
       ],
-      imageUrl: "https://based-bingo.vercel.app/preview.png",
-      heroImageUrl: "https://based-bingo.vercel.app/hero.png",
-      splashImageUrl: "https://based-bingo.vercel.app/splash.png",
+          imageUrl: "https://basedbingo.xyz/preview.png",
+    heroImageUrl: "https://basedbingo.xyz/hero.png",
+    splashImageUrl: "https://basedbingo.xyz/splash.png",
       splashBackgroundColor: "#0052FF",
       tags: ["bingo", "games", "base", "crypto", "onchain"],
       tagline: "Play Bingo win real BINGO soon",
       buttonTitle: "Play Based Bingo",
       ogTitle: "Based Bingo Onchain Fun",
       ogDescription: "Draw numbers, mark your card, and shout BINGO! Free play now, token wins coming.",
-      ogImageUrl: "https://based-bingo.vercel.app/og-image.png",
-      castShareUrl: "https://based-bingo.vercel.app/share",
-      homeUrl: "https://based-bingo.vercel.app",
-      webhookUrl: "https://based-bingo.vercel.app/api/webhook",
+      ogImageUrl: "https://basedbingo.xyz/og-image.png",
+      castShareUrl: "https://basedbingo.xyz/share",
+      homeUrl: "https://basedbingo.xyz",
+      webhookUrl: "https://basedbingo.xyz/api/webhook",
       requiredChains: ["eip155:8453"],
-      iconUrl: "https://based-bingo.vercel.app/icon.png"
+      iconUrl: "https://basedbingo.xyz/icon.png"
     },
     accountAssociation: {
       header: process.env.FARCASTER_HEADER || "eyJmaWQiOjEwNDUwNDIsInR5cGUiOiJhdXRoIiwia2V5IjoiMHgyZTM3MkEyNzFkQjI3NWNlMDRDOTdkM2RlNWZBMUIzM0QzZUJFNmRFIn0",

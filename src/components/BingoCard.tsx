@@ -196,7 +196,7 @@ export default function BingoCard() {
       }
 
       const winType = newWin.types[newWin.types.length - 1].toLowerCase().replace(/!/g, '').replace(/\s/g, '-');
-      const shareUrl = `https://based-bingo.vercel.app/win/${winType}`;
+      const shareUrl = `https://basedbingo.xyz/win/${winType}`;
       alert(`New win! Share on Farcaster: ${shareUrl}`);
 
       sdk.actions.cast({
@@ -217,8 +217,8 @@ export default function BingoCard() {
   const shareForExtraPlay = async () => {
     try {
       await sdk.actions.cast({
-        text: 'Loving Based Bingo—join the fun! https://based-bingo.vercel.app',
-        embeds: [{ url: 'https://based-bingo.vercel.app' }],
+        text: 'Loving Based Bingo—join the fun! https://basedbingo.xyz',
+        embeds: [{ url: 'https://basedbingo.xyz' }],
       });
       setDailyPlays(0);
       alert('Shared! You get +1 play today.');

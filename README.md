@@ -51,7 +51,7 @@ This app is fully compliant with **EIP-5792** (Wallet Connect for Mini Apps), en
    ```
    # OnchainKit Configuration
    NEXT_PUBLIC_ONCHAINKIT_PROJECT_NAME=Based Bingo
-   NEXT_PUBLIC_URL=https://based-bingo.vercel.app
+   NEXT_PUBLIC_URL=https://basedbingo.xyz
    NEXT_PUBLIC_ONCHAINKIT_API_KEY=your-api-key-here
 
    # Farcaster Account Association (from your manifest)
@@ -131,7 +131,7 @@ src/
 ### Environment Variables for Production
 ```
 NEXT_PUBLIC_ONCHAINKIT_PROJECT_NAME=Based Bingo
-NEXT_PUBLIC_URL=https://based-bingo.vercel.app
+NEXT_PUBLIC_URL=https://basedbingo.xyz
 NEXT_PUBLIC_ONCHAINKIT_API_KEY=your-production-api-key
 FARCASTER_HEADER=your-farcaster-header
 FARCASTER_PAYLOAD=your-farcaster-payload

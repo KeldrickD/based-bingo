@@ -20,7 +20,7 @@ export async function GET(request: NextRequest) {
       <text x="600" y="300" font-family="Arial, sans-serif" font-size="48" font-weight="bold" text-anchor="middle" fill="white">${winType.toUpperCase()} WIN!</text>
       <text x="600" y="380" font-family="Arial, sans-serif" font-size="32" text-anchor="middle" fill="white">Won ${count} $BINGO tokens</text>
       <text x="600" y="450" font-family="Arial, sans-serif" font-size="24" text-anchor="middle" fill="white">Play Based Bingo on Base</text>
-      <text x="600" y="580" font-family="Arial, sans-serif" font-size="18" text-anchor="middle" fill="white">based-bingo.vercel.app</text>
+      <text x="600" y="580" font-family="Arial, sans-serif" font-size="18" text-anchor="middle" fill="white">basedbingo.xyz</text>
     </svg>
   `;
 
