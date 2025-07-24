@@ -1,30 +1,14 @@
 'use client'; // Client-side for state
 
-import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { useAccount, useConnect } from 'wagmi';
-import { useMiniKit } from '@coinbase/onchainkit/minikit';
-import { sdk } from '@farcaster/miniapp-sdk';
-import { toPng } from 'html-to-image';
+import React, { useState, useEffect, useRef } from 'react';
+import { sdk } from '@farcaster/miniapp-sdk'; // For shares
+import { toPng } from 'html-to-image'; // For win snapshots
+import { useAccount, useWriteContract } from 'wagmi';
+import basedBingoABI from '@/abis/BasedBingo.json';
+import bingoGameABI from '@/abis/BingoGame.json';
 
-// EIP-5792 environment detection
-const isMiniAppEnvironment = () => {
-  if (typeof window === 'undefined') return false;
-  
-  // Check for Farcaster Mini App environment
-  const isFarcasterMiniApp = window.location.hostname.includes('warpcast.com') || 
-                            window.location.hostname.includes('farcaster.xyz') ||
-                            window.navigator.userAgent.includes('Farcaster');
-  
-  // Check for Coinbase Wallet Mini App environment
-  const isCoinbaseMiniApp = window.location.hostname.includes('coinbase.com') ||
-                           window.navigator.userAgent.includes('Coinbase');
-  
-  // Check for EIP-5792 support
-  const hasEIP5792 = typeof window !== 'undefined' && 
-                  (window as unknown as { ethereum?: { isMiniApp?: boolean } })?.ethereum?.isMiniApp === true;
-  
-  return isFarcasterMiniApp || isCoinbaseMiniApp || hasEIP5792;
-};
+const TOKEN_ADDRESS = '0xd5D90dF16CA7b11Ad852e3Bf93c0b9b774CEc047' as `0x${string}`;
+const GAME_ADDRESS = '0x22cF7a77491614B0b69FF9Fd77D0F63048DB5dDb' as `0x${string}`;
 
 function generateBingoCard() {
   const columnRanges = [
@@ -75,107 +59,25 @@ function checkWin(marked: Set<string>): { count: number; types: string[] } {
 }
 
 export default function BingoCard() {
+  const { address } = useAccount();
+  const { writeContract } = useWriteContract();
   const [card, setCard] = useState<(number | string)[][]>([]);
   const [marked, setMarked] = useState<Set<string>>(new Set(['22']));
+  const [currentNumber, setCurrentNumber] = useState<number | null>(null);
   const [drawnNumbers, setDrawnNumbers] = useState<Set<number>>(new Set());
-  const [recentDraws, setRecentDraws] = useState<number[]>([]); // Last 5 draws
+  const [recentDraws, setRecentDraws] = useState<number[]>([]);
   const [winInfo, setWinInfo] = useState<{ count: number; types: string[] }>({ count: 0, types: [] });
   const [gameTimer, setGameTimer] = useState(120); // 2 mins
   const [timerActive, setTimerActive] = useState(false);
-  const [isHydrated, setIsHydrated] = useState(false);
-  const [isSharing, setIsSharing] = useState(false);
-  const [gameStarted, setGameStarted] = useState(false);
-  const [isMiniApp, setIsMiniApp] = useState(false);
-  const [startTrigger, setStartTrigger] = useState(0);
+  const [autoDrawInterval, setAutoDrawInterval] = useState<NodeJS.Timeout | null>(null);
+  const gridRef = useRef<HTMLDivElement>(null);
 
-  // Daily limits (from before)
+  // Daily limits
   const [dailyPlays, setDailyPlays] = useState(0);
+  const [lastPlayDate, setLastPlayDate] = useState('');
   const [unlimitedToday, setUnlimitedToday] = useState(false);
   const MAX_FREE_PLAYS = 3;
 
-  const { address, isConnected, isConnecting } = useAccount();
-  const { connect, connectors, error: connectError } = useConnect();
-  const miniKit = useMiniKit();
-
-  // Refs for card snapshot and interval tracking
-  const gridRef = useRef<HTMLDivElement>(null);
-  const intervalRef = useRef<NodeJS.Timeout | null>(null);
-  const gameTimerRef = useRef(gameTimer);
-  const isDrawingActiveRef = useRef(false);
-
-  // Enhanced wallet connection with EIP-5792 support
-  const handleWalletConnection = useCallback(async () => {
-    console.log('Attempting wallet connection...');
-    console.log('Available connectors:', connectors);
-    console.log('Mini App environment:', isMiniApp);
-    
-    try {
-      // Try Farcaster Mini App connector first (EIP-5792 compliant)
-      const miniAppConnector = connectors.find(connector => 
-        connector.name === 'Farcaster Mini App' || 
-        connector.name.includes('Farcaster') ||
-        connector.name.includes('Mini App')
-      );
-      
-      if (miniAppConnector) {
-        console.log('Using Farcaster Mini App connector:', miniAppConnector.name);
-        await connect({ connector: miniAppConnector });
-      } else {
-        // Fallback to first available connector
-        if (connectors.length > 0) {
-          console.log('Using fallback connector:', connectors[0].name);
-          await connect({ connector: connectors[0] });
-        } else {
-          console.error('No connectors available');
-          alert('No wallet connectors available. Please ensure you have a compatible wallet installed.');
-        }
-      }
-    } catch (error) {
-      console.error('Wallet connection failed:', error);
-      alert('Wallet connection failed. You can still play the game!');
-    }
-  }, [connect, connectors, isMiniApp]);
-
-  const resetGame = useCallback(() => {
-    // Clear any existing interval first
-    if (intervalRef.current) {
-      console.log('Game reset: clearing interval:', intervalRef.current);
-      clearInterval(intervalRef.current);
-      intervalRef.current = null;
-    }
-    isDrawingActiveRef.current = false;
-    
-    const newCard = generateBingoCard();
-    setCard(newCard);
-    setMarked(new Set(['22']));
-    setDrawnNumbers(new Set());
-    setRecentDraws([]);
-    setWinInfo({ count: 0, types: [] });
-    setGameTimer(120);
-    setTimerActive(false);
-    setIsSharing(false);
-    setGameStarted(false);
-    
-    console.log('Game Reset. Card:', newCard);
-    console.log('Center (col 2, row 2):', newCard[2][2]); // Debug
-  }, []);
-
-  const stopAutoDraw = useCallback(() => {
-    if (intervalRef.current) {
-      console.log('Stopping auto-draw, clearing interval:', intervalRef.current);
-      clearInterval(intervalRef.current);
-      intervalRef.current = null;
-    }
-  }, []);
-
-  // Initialize card on mount (but don't start game)
-  useEffect(() => {
-    const newCard = generateBingoCard();
-    setCard(newCard);
-    console.log('Initial card generated:', newCard);
-  }, []);
-
-  // Daily limits load
   useEffect(() => {
     const today = new Date().toISOString().split('T')[0];
     const storedDate = localStorage.getItem('lastPlayDate');
@@ -186,310 +88,178 @@ export default function BingoCard() {
       localStorage.setItem('lastPlayDate', today);
       localStorage.setItem('dailyPlays', '0');
       localStorage.removeItem('unlimitedDate');
+      setLastPlayDate(today);
       setDailyPlays(0);
       setUnlimitedToday(false);
     } else {
+      setLastPlayDate(storedDate || '');
       setDailyPlays(storedPlays);
       setUnlimitedToday(storedUnlimited);
     }
   }, []);
 
-  // Game timer countdown
   useEffect(() => {
     if (timerActive && gameTimer > 0) {
       const interval = setInterval(() => setGameTimer((prev) => prev - 1), 1000);
       return () => clearInterval(interval);
-    } else if (gameTimer === 0 && timerActive) {
+    } else if (gameTimer === 0) {
       stopAutoDraw();
       alert('Time up! Game over.');
-      setTimerActive(false);
     }
-  }, [timerActive, gameTimer, stopAutoDraw]);
+  }, [timerActive, gameTimer]);
 
   useEffect(() => {
-    gameTimerRef.current = gameTimer;
-  }, [gameTimer]);
-
-  // New: Call MiniKit setFrameReady() once the card is loaded
-  useEffect(() => {
-    if (card.length > 0) { // Ensure app is ready (card generated)
-      miniKit.setFrameReady(); // Hide splash screen in Coinbase Wallet
-    }
-  }, [card, miniKit]);
-
-  // Handle hydration with timeout fallback
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      setIsHydrated(true);
-    }, 1000); // 1 second timeout
-
-    return () => clearTimeout(timer);
-  }, []);
-
-  // Detect Mini App environment and EIP-5792 support
-  useEffect(() => {
-    const miniAppEnv = isMiniAppEnvironment();
-    setIsMiniApp(miniAppEnv);
-    console.log('Mini App environment detected:', miniAppEnv);
-    
-    if (miniAppEnv) {
-      console.log('EIP-5792 supported environment detected');
-      // Additional Mini App specific setup can go here
-    }
+    const newCard = generateBingoCard();
+    setCard(newCard);
   }, []);
 
   const startGame = () => {
-    if (!unlimitedToday && dailyPlays >= MAX_FREE_PLAYS) {
-      alert('Daily limit reached! Share on Farcaster for +1 play or pay 50 $BINGO for unlimited.');
-      return;
-    }
+    if (!unlimitedToday && dailyPlays >= MAX_FREE_PLAYS) return;
 
-    console.log('Starting game...');
     resetGame();
-    setGameStarted(true);
     setTimerActive(true);
-    setStartTrigger((prev) => prev + 1);
-    
-    if (!unlimitedToday) {
-      const newPlays = dailyPlays + 1;
-      setDailyPlays(newPlays);
-      localStorage.setItem('dailyPlays', newPlays.toString());
+    startAutoDraw();
+
+    if (!unlimitedToday && address) {
+      writeContract({
+        address: GAME_ADDRESS,
+        abi: bingoGameABI,
+        functionName: 'join',
+        value: BigInt(0.0005 * 10**18), // 0.0005 ETH
+      }).then(() => {
+        const newPlays = dailyPlays + 1;
+        setDailyPlays(newPlays);
+        localStorage.setItem('dailyPlays', newPlays.toString());
+      }).catch((error) => console.error('Join failed:', error));
     }
   };
 
-  const drawNumber = useCallback(() => {
-    console.log('Draw function called at:', new Date().toISOString());
-    setDrawnNumbers((currentDrawnNumbers: Set<number>) => {
-      if (currentDrawnNumbers.size >= 75 || gameTimerRef.current <= 0) {
-        if (intervalRef.current) {
-          clearInterval(intervalRef.current);
-          intervalRef.current = null;
-          isDrawingActiveRef.current = false;
-        }
-        return currentDrawnNumbers;
+  const resetGame = () => {
+    const newCard = generateBingoCard();
+    setCard(newCard);
+    setMarked(new Set(['22']));
+    setCurrentNumber(null);
+    setDrawnNumbers(new Set());
+    setRecentDraws([]);
+    setWinInfo({ count: 0, types: [] });
+    setGameTimer(120);
+    setTimerActive(false);
+    if (autoDrawInterval) clearInterval(autoDrawInterval);
+  };
+
+  const startAutoDraw = () => {
+    const interval = setInterval(() => {
+      if (drawnNumbers.size >= 75 || gameTimer <= 0) {
+        stopAutoDraw();
+        return;
       }
 
-      let num: number;
+      let num1: number, num2: number;
       do {
-        num = Math.floor(Math.random() * 75) + 1;
-      } while (currentDrawnNumbers.has(num));
+        num1 = Math.floor(Math.random() * 75) + 1;
+      } while (drawnNumbers.has(num1));
+      do {
+        num2 = Math.floor(Math.random() * 75) + 1;
+      } while (drawnNumbers.has(num2) || num2 === num1);
 
-      console.log('Drawing number:', num);
-      console.log('Current drawn numbers:', Array.from(currentDrawnNumbers));
-      const newDrawnNumbers = new Set([...currentDrawnNumbers, num]);
-      
+      setDrawnNumbers((prev) => new Set([...prev, num1, num2]));
+      setCurrentNumber(num2); // Latest number
       setRecentDraws((prev) => {
-        const newDraws = [...prev, num].slice(-5); // Keep last 5
+        const newDraws = [...prev, num1, num2].slice(-5); // Keep last 5
         return newDraws;
       });
-      
-      return newDrawnNumbers;
-    });
-  }, []);
+    }, 5000); // 5s interval for two numbers
 
-  useEffect(() => {
-    if (!gameStarted || !timerActive || isDrawingActiveRef.current) return;
-
-    console.log('Starting new drawing interval');
-    isDrawingActiveRef.current = true;
-    
-    // Draw first number immediately
-    drawNumber();
-    
-    const interval = setInterval(drawNumber, 5000);
-    intervalRef.current = interval;
-
-    return () => {
-      console.log('Cleaning up drawing interval');
-      clearInterval(interval);
-      intervalRef.current = null;
-      isDrawingActiveRef.current = false;
-    };
-  }, [gameStarted, timerActive, startTrigger, drawNumber]);
-
-  const markCell = (row: number, col: number) => {
-    if (!gameStarted) return; // Can't mark if game hasn't started
-    
-    const num = card[col][row];
-    if (typeof num === 'number' && recentDraws.includes(num)) { // Allow marking any recent draw
-      const pos = `${col}${row}`;
-      setMarked((prev) => new Set([...prev, pos]));
-      console.log('Marked cell:', pos, 'with number:', num);
-    }
+    setAutoDrawInterval(interval);
   };
 
-  const shareWin = useCallback(async (winTypes: string[]) => {
-    if (isSharing) return; // Prevent multiple shares
-    setIsSharing(true);
+  const stopAutoDraw = () => {
+    if (autoDrawInterval) clearInterval(autoDrawInterval);
+  };
 
-    try {
-      // Generate card snapshot
-      if (gridRef.current) {
-        const dataUrl = await toPng(gridRef.current, {
-          quality: 0.95,
-          backgroundColor: '#ffffff',
-        });
-        console.log('Win card snapshot generated:', dataUrl);
-        // In production, upload this to IPFS or your image service
-        // For now, we'll use a placeholder
-      }
-
-      // Generate share URL
-      const winType = winTypes[winTypes.length - 1]
-        .toLowerCase()
-        .replace(/!/g, '')
-        .replace(/\s/g, '-'); // e.g., 'full-house'
-      const shareUrl = `https://based-bingo.vercel.app/win/${winType}`;
-
-      // Auto-cast the win
-      await sdk.actions.openUrl(
-        `https://warpcast.com/~/compose?text=Just+got+${winTypes.join('+%2B+')}+in+Based+Bingo!+Won+$BINGO—play+now!&embeds[]=${encodeURIComponent(shareUrl)}`
-      );
-
-      // Grant extra play for sharing
-      setDailyPlays((prev) => {
-        const newPlays = Math.max(0, prev - 1); // Reduce by 1 to allow another play
-        localStorage.setItem('dailyPlays', newPlays.toString());
-        return newPlays;
-      });
-
-      alert(`Win shared! You got +1 play for sharing!`);
-    } catch (error) {
-      console.error('Failed to share win:', error);
-      alert('Failed to share win. You can still play!');
-    } finally {
-      setIsSharing(false);
+  const markCell = (row: number, col: number) => {
+    const num = card[col][row];
+    if (typeof num === 'number' && recentDraws.includes(num)) {
+      const pos = `${col}${row}`;
+      setMarked((prev) => new Set([...prev, pos]));
     }
-  }, [isSharing]);
+  };
 
   useEffect(() => {
     const newWin = checkWin(marked);
-    if (newWin.count > winInfo.count) {
+    if (newWin.count > winInfo.count && address) {
       setWinInfo(newWin);
+      if (gridRef.current) {
+        toPng(gridRef.current).then((dataUrl) => {
+          console.log('Win image:', dataUrl); // Placeholder; upload to IPFS later
+        });
+      }
+
+      const winType = newWin.types[newWin.types.length - 1].toLowerCase().replace(/!/g, '').replace(/\s/g, '-');
+      const shareUrl = `https://based-bingo.vercel.app/win/${winType}`;
+      alert(`New win! Share on Farcaster: ${shareUrl}`);
+
+      sdk.actions.cast({
+        text: `Just got ${newWin.types.join(' + ')} in Based Bingo! Won 1000 $BINGO—play now!`,
+        embeds: [{ url: shareUrl }],
+      }).catch((error) => console.error('Cast failed:', error));
+
+      // Owner claims reward (for now; automate later)
+      writeContract({
+        address: GAME_ADDRESS,
+        abi: bingoGameABI,
+        functionName: 'claimWin',
+        args: [address],
+      }).catch((error) => console.error('Claim failed:', error));
     }
-  }, [marked, winInfo.count]);
+  }, [marked, address, winInfo.count]);
 
   const shareForExtraPlay = async () => {
     try {
-      // Use openUrl to share on Farcaster
-      await sdk.actions.openUrl('https://warpcast.com/~/compose?text=Just+playing+Based+Bingo—join+me!+https://based-bingo.vercel.app&embeds[]=https://based-bingo.vercel.app');
-      // On success, grant +1 play
-      setDailyPlays((prev) => {
-        const newPlays = Math.max(0, prev - 1); // Reduce by 1 to allow another play
-        localStorage.setItem('dailyPlays', newPlays.toString());
-        return newPlays;
+      await sdk.actions.cast({
+        text: 'Loving Based Bingo—join the fun! https://based-bingo.vercel.app',
+        embeds: [{ url: 'https://based-bingo.vercel.app' }],
       });
+      setDailyPlays(0);
+      alert('Shared! You get +1 play today.');
     } catch (error) {
-      console.error('Failed to share:', error);
+      console.error('Share failed:', error);
+      alert('Share failed—try again.');
     }
   };
 
   const payForUnlimited = () => {
-    // Future: Add $BINGO token cost for unlimited plays
-    setUnlimitedToday(true);
-    localStorage.setItem('unlimitedDate', new Date().toISOString().split('T')[0]);
-    alert('Unlimited plays activated for today!');
+    if (address) {
+      writeContract({
+        address: GAME_ADDRESS,
+        abi: bingoGameABI,
+        functionName: 'buyUnlimited',
+        args: [],
+      }).then(() => {
+        const today = new Date().toISOString().split('T')[0];
+        localStorage.setItem('unlimitedDate', today);
+        setUnlimitedToday(true);
+        alert('Unlimited access unlocked for today!');
+      }).catch((error) => console.error('Unlimited purchase failed:', error));
+    }
   };
 
-  const canPlay = dailyPlays < MAX_FREE_PLAYS || unlimitedToday;
-
   return (
-    <div className="text-center max-w-sm mx-auto min-h-[600px] flex flex-col"> {/* Fixed height container */}
-      {!isHydrated ? (
-        <div className="mb-4 p-2 text-coinbase-blue">Loading...</div>
+    <div className="text-center max-w-sm mx-auto">
+      {!address ? (
+        <button
+          onClick={() => {/* Assume MiniKit handles connect */}}
+          className="bg-coinbase-blue text-white px-6 py-2 rounded-lg font-bold hover:bg-blue-600 mb-4"
+        >
+          Connect Wallet (for $BINGO)
+        </button>
       ) : (
-        <>
-          {/* EIP-5792 Status */}
-          {isMiniApp && (
-            <div className="mb-4 p-2 bg-green-100 border border-green-300 rounded-lg">
-              <p className="text-sm text-green-700 font-semibold">
-                🎯 EIP-5792 Mini App Environment Detected
-              </p>
-              <p className="text-xs text-green-600">
-                Native wallet integration enabled
-              </p>
-            </div>
-          )}
-          
-          {isConnecting ? (
-            <p className="text-coinbase-blue mb-4">Connecting...</p>
-          ) : isConnected ? (
-            <div className="mb-4">
-              <p className="text-sm text-coinbase-blue mb-1">
-                Connected: {address?.slice(0, 6)}...{address?.slice(-4)}
-              </p>
-              {isMiniApp && (
-                <p className="text-xs text-green-600">
-                  ✓ EIP-5792 wallet connection active
-                </p>
-              )}
-            </div>
-          ) : (
-            <button
-              onClick={handleWalletConnection}
-              className="bg-coinbase-blue text-white px-6 py-2 rounded-lg font-bold hover:bg-blue-600 mb-4"
-            >
-              {isMiniApp ? 'Connect Wallet (EIP-5792)' : 'Connect Wallet (for $BINGO beta)'}
-            </button>
-          )}
-          {connectError && (
-            <p className="text-red-500 text-sm mb-4">Wallet connection failed. You can still play!</p>
-          )}
-        </>
+        <p className="text-sm text-coinbase-blue mb-4">Connected: {address.slice(0, 6)}...{address.slice(-4)}</p>
       )}
 
-      {/* Daily plays counter */}
-      <div className="mb-4 text-sm">
-        <p className="text-coinbase-blue">
-          Free plays today: {dailyPlays}/{MAX_FREE_PLAYS}
-        </p>
-        {!canPlay && (
-          <div className="mt-2">
-            <p className="text-red-500 text-sm mb-2">Daily limit reached!</p>
-            <button
-              onClick={shareForExtraPlay}
-              className="bg-purple-600 text-white px-4 py-2 rounded-lg text-sm font-bold hover:bg-purple-700 mr-2"
-            >
-              Share on Farcaster for +1 Play
-            </button>
-            <button
-              onClick={payForUnlimited}
-              className="bg-yellow-500 text-white px-4 py-2 rounded-lg text-sm font-bold hover:bg-yellow-600"
-            >
-              Pay 50 $BINGO for Unlimited
-            </button>
-          </div>
-        )}
-      </div>
-
-      {/* Recent draws display (moved to top, between title and card) */}
-      <div className="mb-4 min-h-[80px]"> {/* Fixed height to prevent layout shift */}
-        {recentDraws.length > 0 ? (
-          <>
-            <p className="text-sm text-coinbase-blue mb-2">Recent Draws:</p>
-            <div className="flex justify-center gap-2">
-              {recentDraws.map((num, idx) => (
-                <div
-                  key={idx}
-                  className={`w-12 h-12 border-2 border-coinbase-blue flex items-center justify-center text-lg font-bold rounded transition-opacity ${
-                    idx < recentDraws.length - 1 ? 'opacity-50' : 'opacity-100'
-                  }`}
-                >
-                  {num}
-                </div>
-              ))}
-            </div>
-          </>
-        ) : (
-          <div className="h-12 flex items-center justify-center">
-            <p className="text-sm text-gray-400">Waiting for draws...</p>
-          </div>
-        )}
-      </div>
-
-      <div ref={gridRef} className="grid grid-cols-5 gap-1 mb-4 w-full max-w-sm mx-auto">
+      <div ref={gridRef} className="grid grid-cols-5 gap-1 mb-4">
         {['B', 'I', 'N', 'G', 'O'].map((letter) => (
-          <div key={letter} className="font-bold text-coinbase-blue text-lg h-8 flex items-center justify-center">
+          <div key={letter} className="font-bold text-coinbase-blue text-lg">
             {letter}
           </div>
         ))}
@@ -497,18 +267,15 @@ export default function BingoCard() {
           Array.from({ length: 5 }).map((_, col) => {
             const num = card[col]?.[row] ?? '';
             const pos = `${col}${row}`;
-            const isMarked = marked.has(pos) || (num === 'FREE' && pos === '22'); // Visually mark FREE
-            const isRecentDraw = typeof num === 'number' && recentDraws.includes(num);
+            const isMarked = marked.has(pos) || (num === 'FREE' && pos === '22');
             return (
               <button
                 key={pos}
                 onClick={() => markCell(row, col)}
-                className={`w-full aspect-square border-2 border-coinbase-blue flex items-center justify-center text-sm font-bold rounded transition-all min-h-[48px] ${
-                  isMarked ? 'bg-coinbase-blue text-white' : 'bg-white text-coinbase-blue hover:bg-blue-100'
-                } ${num === 'FREE' ? 'text-xs rotate-[-45deg]' : ''} ${
-                  isRecentDraw && !isMarked ? 'border-yellow-500 border-4 animate-pulse' : ''
-                }`}
-                disabled={isMarked || (typeof num !== 'number' && num !== 'FREE') || !gameStarted}
+                className={`w-full aspect-square border-2 border-coinbase-blue flex items-center justify-center text-sm font-bold rounded
+                  ${isMarked ? 'bg-coinbase-blue text-white' : 'bg-white text-coinbase-blue hover:bg-blue-100'}
+                  ${num === 'FREE' ? 'text-xs rotate-[-45deg]' : ''}`}
+                disabled={isMarked || (typeof num !== 'number' && num !== 'FREE')}
               >
                 {num}
               </button>
@@ -518,42 +285,43 @@ export default function BingoCard() {
       </div>
 
       <div className="flex justify-center gap-4 mb-2">
-        <button
-          onClick={startGame}
-          className={`px-6 py-2 rounded-lg font-bold transition-all ${
-            !canPlay
-              ? 'bg-gray-400 text-gray-600 cursor-not-allowed'
-              : 'bg-gray-500 text-white hover:bg-gray-600'
-          }`}
-          disabled={!canPlay}
-        >
-          {gameStarted ? 'New Game' : 'Start Game'} ({unlimitedToday ? 'Unlimited' : MAX_FREE_PLAYS - dailyPlays} left)
+        <button onClick={startGame} className="bg-gray-500 text-white px-6 py-2 rounded-lg font-bold hover:bg-gray-600">
+          New Game ({unlimitedToday ? 'Unlimited' : MAX_FREE_PLAYS - dailyPlays} left)
         </button>
       </div>
 
-      {/* Timer display */}
-      {timerActive && (
-        <p className="text-xl text-red-500 font-bold mb-2">
-          Time Left: {Math.floor(gameTimer / 60)}:{gameTimer % 60 < 10 ? '0' : ''}{gameTimer % 60}
-        </p>
-      )}
+      {timerActive && <p className="text-xl text-red-500">Time Left: {Math.floor(gameTimer / 60)}:{gameTimer % 60 < 10 ? '0' : ''}{gameTimer % 60}</p>}
+
+      <div className="flex justify-center gap-2 mt-2">
+        {recentDraws.map((num, idx) => (
+          <div
+            key={idx}
+            className={`w-12 h-12 border-2 border-coinbase-blue flex items-center justify-center text-lg font-bold rounded ${idx < recentDraws.length - 1 ? 'opacity-50' : ''}`}
+          >
+            {num}
+          </div>
+        ))}
+      </div>
 
       {winInfo.types.length > 0 && (
-        <div className="mt-4">
-          <p className="text-2xl font-bold text-coinbase-blue animate-pulse mb-2">
-            {winInfo.types.join(' + ')} ({winInfo.count} total)
-          </p>
-          {!isSharing && (
-            <button
-              onClick={() => shareWin(winInfo.types)}
-              className="bg-green-600 text-white px-4 py-2 rounded-lg text-sm font-bold hover:bg-green-700"
-            >
-              Share Win on Farcaster (+1 Play)
-            </button>
-          )}
-          {isSharing && (
-            <p className="text-sm text-green-600">Sharing win...</p>
-          )}
+        <p className="text-2xl font-bold text-coinbase-blue mt-4 animate-pulse">{winInfo.types.join(' + ')} ({winInfo.count} total)</p>
+      )}
+
+      {(!unlimitedToday && dailyPlays >= MAX_FREE_PLAYS) && (
+        <div className="mt-4 p-4 bg-blue-100 rounded-lg">
+          <p className="text-coinbase-blue mb-2">Free plays used up today! Get more:</p>
+          <button
+            onClick={shareForExtraPlay}
+            className="bg-coinbase-blue text-white px-4 py-2 rounded mr-2"
+          >
+            Share on Farcaster (+1 Play)
+          </button>
+          <button
+            onClick={payForUnlimited}
+            className="bg-green-500 text-white px-4 py-2 rounded"
+          >
+            Pay 50 $BINGO (Unlimited Today)
+          </button>
         </div>
       )}
     </div>
