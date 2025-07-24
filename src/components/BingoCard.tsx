@@ -146,20 +146,25 @@ export default function BingoCard() {
 
   const startAutoDraw = () => {
     const interval = setInterval(() => {
-      if (drawnNumbers.size >= 75 || gameTimer <= 0) {
-        stopAutoDraw();
-        return;
-      }
+      setDrawnNumbers((prevDrawnNumbers) => {
+        if (prevDrawnNumbers.size >= 75 || gameTimer <= 0) {
+          stopAutoDraw();
+          return prevDrawnNumbers;
+        }
 
-      let num: number;
-      do {
-        num = Math.floor(Math.random() * 75) + 1;
-      } while (drawnNumbers.has(num));
+        let num: number;
+        do {
+          num = Math.floor(Math.random() * 75) + 1;
+        } while (prevDrawnNumbers.has(num));
 
-      setDrawnNumbers((prev) => new Set([...prev, num]));
-      setRecentDraws((prev) => {
-        const newDraws = [...prev, num].slice(-5); // Keep last 5
-        return newDraws;
+        const newDrawnNumbers = new Set([...prevDrawnNumbers, num]);
+        
+        setRecentDraws((prev) => {
+          const newDraws = [...prev, num].slice(-5); // Keep last 5
+          return newDraws;
+        });
+        
+        return newDrawnNumbers;
       });
     }, 3000); // 3s interval for one number
 
