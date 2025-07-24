@@ -245,6 +245,31 @@ export default function BingoCard() {
         <p className="text-sm text-coinbase-blue mb-4">Connected: {address.slice(0, 6)}...{address.slice(-4)}</p>
       )}
 
+      {/* Recent draws display moved to top */}
+      <div className="mb-4 min-h-[80px]">
+        {recentDraws.length > 0 ? (
+          <>
+            <p className="text-sm text-coinbase-blue mb-2">Recent Draws:</p>
+            <div className="flex justify-center gap-2">
+              {recentDraws.map((num, idx) => (
+                <div
+                  key={idx}
+                  className={`w-12 h-12 border-2 border-coinbase-blue flex items-center justify-center text-lg font-bold rounded transition-opacity ${
+                    idx < recentDraws.length - 1 ? 'opacity-50' : 'opacity-100'
+                  }`}
+                >
+                  {num}
+                </div>
+              ))}
+            </div>
+          </>
+        ) : (
+          <div className="h-12 flex items-center justify-center">
+            <p className="text-sm text-gray-400">Waiting for draws...</p>
+          </div>
+        )}
+      </div>
+
       <div ref={gridRef} className="grid grid-cols-5 gap-1 mb-4">
         {['B', 'I', 'N', 'G', 'O'].map((letter) => (
           <div key={letter} className="font-bold text-coinbase-blue text-lg">
@@ -279,17 +304,6 @@ export default function BingoCard() {
       </div>
 
       {timerActive && <p className="text-xl text-red-500">Time Left: {Math.floor(gameTimer / 60)}:{gameTimer % 60 < 10 ? '0' : ''}{gameTimer % 60}</p>}
-
-      <div className="flex justify-center gap-2 mt-2">
-        {recentDraws.map((num, idx) => (
-          <div
-            key={idx}
-            className={`w-12 h-12 border-2 border-coinbase-blue flex items-center justify-center text-lg font-bold rounded ${idx < recentDraws.length - 1 ? 'opacity-50' : ''}`}
-          >
-            {num}
-          </div>
-        ))}
-      </div>
 
       {winInfo.types.length > 0 && (
         <p className="text-2xl font-bold text-coinbase-blue mt-4 animate-pulse">{winInfo.types.join(' + ')} ({winInfo.count} total)</p>
