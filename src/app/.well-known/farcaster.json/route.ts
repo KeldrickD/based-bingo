@@ -17,7 +17,7 @@ export async function GET() {
     splashImageUrl: "https://basedbingo.xyz/splash.png",
       splashBackgroundColor: "#0052FF",
       tags: ["bingo", "games", "base", "crypto", "onchain"],
-      tagline: "Play Bingo win real BINGO soon",
+      tagline: "Play Bingo win real BINGO now",
       buttonTitle: "Play Based Bingo",
       ogTitle: "Based Bingo Onchain Fun",
       ogDescription: "Draw numbers, mark your card, and shout BINGO! Free play now, token wins coming.",
