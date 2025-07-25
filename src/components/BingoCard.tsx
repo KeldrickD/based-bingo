@@ -129,17 +129,22 @@ export default function BingoCard() {
 
     // Charge entry fee if not unlimited
     if (!unlimitedToday && address) {
-      writeContract({
-        address: GAME_ADDRESS,
-        abi: bingoGameABI,
-        functionName: 'join',
-        value: BigInt(Math.floor(0.0005 * 10**18)), // 0.0005 ETH
-      });
-      
-      // Update plays count for UI feedback
-      const newPlays = dailyPlays + 1;
-      setDailyPlays(newPlays);
-      localStorage.setItem('dailyPlays', newPlays.toString());
+      try {
+        writeContract({
+          address: GAME_ADDRESS,
+          abi: bingoGameABI,
+          functionName: 'join',
+          value: BigInt(Math.floor(0.0005 * 10**18)), // 0.0005 ETH
+        });
+        
+        // Update plays count for UI feedback
+        const newPlays = dailyPlays + 1;
+        setDailyPlays(newPlays);
+        localStorage.setItem('dailyPlays', newPlays.toString());
+      } catch (error) {
+        console.error('Join failed:', error);
+        alert('Failed to join game. Make sure you have enough ETH on Base network for the 0.0005 ETH entry fee plus gas.');
+      }
     }
   };
 
@@ -211,19 +216,22 @@ export default function BingoCard() {
       const winType = newWin.types[newWin.types.length - 1].toLowerCase().replace(/!/g, '').replace(/\s/g, '-');
       const shareUrl = `https://basedbingo.xyz/win/${winType}`;
       
-      alert(`🎉 ${newWin.types.join(' + ')}! Share your win: ${shareUrl}`);
+      alert(`🎉 ${newWin.types.join(' + ')}! Win detected - 1000 $BINGO reward pending owner approval. Share your win: ${shareUrl}`);
 
-      // Auto-claim reward (owner-only for now)
-      writeContract({
-        address: GAME_ADDRESS,
-        abi: bingoGameABI,
-        functionName: 'claimWin',
-        args: [address],
-      });
+      // TODO: Auto-claim reward (currently owner-only in contract)
+      // Temporarily disabled - will add public claim function in contract v1.1
+      // writeContract({
+      //   address: GAME_ADDRESS,
+      //   abi: bingoGameABI,
+      //   functionName: 'claimWin',
+      //   args: [address],
+      // });
 
+      console.log(`Win detected: ${newWin.types.join(' + ')} - Winner: ${address} - Share URL: ${shareUrl}`);
+      
       // Auto-share win (when SDK is working)
       try {
-        console.log(`Win detected: ${newWin.types.join(' + ')} - Share URL: ${shareUrl}`);
+        console.log(`Win ready for sharing: ${newWin.types.join(' + ')}`);
         // TODO: Implement auto-cast when Farcaster SDK is fixed
       } catch (error) {
         console.error('Failed to share win:', error);
@@ -245,7 +253,27 @@ export default function BingoCard() {
     }
   };
 
-  const payForUnlimited = async () => {
+  const approveBingo = () => {
+    if (!address) {
+      alert('Please connect your wallet.');
+      return;
+    }
+
+    try {
+      writeContract({
+        address: TOKEN_ADDRESS,
+        abi: basedBingoABI,
+        functionName: 'approve',
+        args: [GAME_ADDRESS, BigInt(50 * 10**18)], // Approve 50 $BINGO
+      });
+      alert('Approval transaction sent! Wait for confirmation, then click "Buy Unlimited".');
+    } catch (error) {
+      console.error('Approval failed:', error);
+      alert('Failed to approve $BINGO. Make sure you have 50 $BINGO tokens in your wallet.');
+    }
+  };
+
+  const payForUnlimited = () => {
     if (!address) {
       alert('Please connect your wallet.');
       return;
@@ -258,37 +286,23 @@ export default function BingoCard() {
     setIsProcessingPayment(true);
 
     try {
-      // Step 1: Approve the BingoGame contract to spend 50 $BINGO
-      console.log('Approving 50 $BINGO for unlimited play...');
+      console.log('Purchasing unlimited play...');
       writeContract({
-        address: TOKEN_ADDRESS,
-        abi: basedBingoABI,
-        functionName: 'approve',
-        args: [GAME_ADDRESS, BigInt(50 * 10**18)], // Approve 50 $BINGO
+        address: GAME_ADDRESS,
+        abi: bingoGameABI,
+        functionName: 'buyUnlimited',
+        args: [],
       });
 
-      // Small delay to ensure approval is processed
-      setTimeout(() => {
-        // Step 2: Call buyUnlimited after approval
-        console.log('Purchasing unlimited play...');
-        writeContract({
-          address: GAME_ADDRESS,
-          abi: bingoGameABI,
-          functionName: 'buyUnlimited',
-          args: [],
-        });
-
-        // Update UI immediately for feedback
-        const today = new Date().toISOString().split('T')[0];
-        localStorage.setItem('unlimitedDate', today);
-        setUnlimitedToday(true);
-        alert('Unlimited access unlocked for today with 50 $BINGO!');
-        setIsProcessingPayment(false);
-      }, 2000);
-
+      // Update UI immediately for feedback
+      const today = new Date().toISOString().split('T')[0];
+      localStorage.setItem('unlimitedDate', today);
+      setUnlimitedToday(true);
+      alert('Unlimited access unlocked for today with 50 $BINGO!');
     } catch (error) {
       console.error('Unlimited purchase failed:', error);
-      alert('Failed to purchase unlimited access. Make sure you have 50 $BINGO tokens.');
+      alert('Failed to purchase unlimited access. Make sure you approved 50 $BINGO first and have enough for gas.');
+    } finally {
       setIsProcessingPayment(false);
     }
   };
@@ -408,6 +422,15 @@ export default function BingoCard() {
             >
               Share on Farcaster (+1 Play)
             </button>
+            <div className="text-sm text-gray-600 mb-2">
+              For unlimited plays: First approve, then buy
+            </div>
+            <button
+              onClick={approveBingo}
+              className="bg-blue-500 text-white px-4 py-2 rounded-lg font-bold hover:bg-blue-600 w-full"
+            >
+              1. Approve 50 $BINGO
+            </button>
             <button
               onClick={payForUnlimited}
               disabled={isProcessingPayment}
@@ -417,7 +440,7 @@ export default function BingoCard() {
                   : 'bg-green-500 text-white hover:bg-green-600'
               }`}
             >
-              {isProcessingPayment ? 'Processing...' : 'Pay 50 $BINGO (Unlimited Today)'}
+              {isProcessingPayment ? 'Processing...' : '2. Buy Unlimited Today'}
             </button>
           </div>
         </div>
