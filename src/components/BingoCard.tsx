@@ -7,7 +7,7 @@ import basedBingoABI from '@/abis/BasedBingo.json';
 import bingoGameABI from '@/abis/BingoGame.json';
 
 const TOKEN_ADDRESS = '0xd5D90dF16CA7b11Ad852e3Bf93c0b9b774CEc047' as `0x${string}`;
-const GAME_ADDRESS = '0x22cF7a77491614B0b69FF9Fd77D0F63048DB5dDb' as `0x${string}`;
+const GAME_ADDRESS = '0x36Fb73233f8BB562a80fcC3ab9e6e011Cfe091f5' as `0x${string}`;
 
 function generateBingoCard() {
   const columnRanges = [
@@ -127,13 +127,14 @@ export default function BingoCard() {
     setTimerActive(true);
     startAutoDraw();
 
-    // Charge entry fee if not unlimited
+        // Charge entry fee if not unlimited
     if (!unlimitedToday && address) {
       try {
         writeContract({
           address: GAME_ADDRESS,
           abi: bingoGameABI,
           functionName: 'join',
+          args: [],
           value: BigInt(Math.floor(0.0005 * 10**18)), // 0.0005 ETH
         });
         
@@ -259,10 +260,10 @@ export default function BingoCard() {
       return;
     }
 
-    try {
+        try {
       writeContract({
         address: TOKEN_ADDRESS,
-        abi: basedBingoABI,
+                  abi: basedBingoABI,
         functionName: 'approve',
         args: [GAME_ADDRESS, BigInt(50 * 10**18)], // Approve 50 $BINGO
       });
@@ -285,11 +286,11 @@ export default function BingoCard() {
 
     setIsProcessingPayment(true);
 
-    try {
+        try {
       console.log('Purchasing unlimited play...');
       writeContract({
         address: GAME_ADDRESS,
-        abi: bingoGameABI,
+                  abi: bingoGameABI,
         functionName: 'buyUnlimited',
         args: [],
       });
