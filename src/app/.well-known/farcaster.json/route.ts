@@ -29,9 +29,9 @@ export async function GET() {
       iconUrl: "https://basedbingo.xyz/icon.png"
     },
     accountAssociation: {
-      header: process.env.FARCASTER_HEADER || "eyJmaWQiOjEwNDUwNDIsInR5cGUiOiJhdXRoIiwia2V5IjoiMHgyZTM3MkEyNzFkQjI3NWNlMDRDOTdkM2RlNWZBMUIzM0QzZUJFNmRFIn0",
-      payload: process.env.FARCASTER_PAYLOAD || "eyJkb21haW4iOiJiYXNlZC1iaW5nby52ZXJjZWwuYXBwIn0",
-      signature: process.env.FARCASTER_SIGNATURE || "/EnNzL6KJD3o05tHyqm/CF/jz2CryQK88Br8UHF3BzcT0hzG8/+Rllh2C/bj3ohHI2eFjMijBkLbohdC7IQggRs="
+      header: "eyJmaWQiOjEwNDUwNDIsInR5cGUiOiJhdXRoIiwia2V5IjoiMHgyZTM3MkEyNzFkQjI3NWNlMDRDOTdkM2RlNWZBMUIzM0QzZUJFNmRFIn0",
+      payload: "eyJkb21haW4iOiJiYXNlZGJpbmdvLnh5eiJ9",
+      signature: "r+PRsIWuo4wnxoxWcnlfVzEY9OkD9KGGk7Mj+Nm7BDoN2UjsYUnPEnETdld5M2SS5bbAhPF7028NsK3o4iHtyBw="
     }
   };
   
