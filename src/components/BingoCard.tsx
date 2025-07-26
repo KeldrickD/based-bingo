@@ -10,7 +10,7 @@ import basedBingoABI from '@/abis/BasedBingo.json';
 import bingoGameABI from '@/abis/BingoGame.json';
 
 const TOKEN_ADDRESS = '0xd5D90dF16CA7b11Ad852e3Bf93c0b9b774CEc047' as `0x${string}`;
-const GAME_ADDRESS = '0x36Fb73233f8BB562a80fcC3ab9e6e011Cfe091f5' as `0x${string}`;
+const GAME_ADDRESS = '0x4CE879376Dc50aBB1Eb8F236B76e8e5a724780Be' as `0x${string}`;
 
 function generateBingoCard() {
   const columnRanges = [
@@ -69,7 +69,6 @@ export default function BingoCard() {
   const [gameTimer, setGameTimer] = useState(120);
   const [timerActive, setTimerActive] = useState(false);
   const [autoDrawInterval, setAutoDrawInterval] = useState<NodeJS.Timeout | null>(null);
-  const [isClaimingWin, setIsClaimingWin] = useState(false);
   const gridRef = useRef<HTMLDivElement>(null);
   
   // Daily limits state
@@ -333,126 +332,7 @@ export default function BingoCard() {
     }
   }, [card, recentDraws]);
 
-  // Simplified win claiming for mobile wallet compatibility
-  const claimWin = useCallback(async () => {
-    console.log('🎯 CLAIM DEBUG: Function called', { address, winTypes: winInfo.types, isClaimingWin });
-    
-    // Debug info via alert for mobile
-    if (!address) {
-      alert('❌ DEBUG: No wallet connected\nPlease connect your wallet first!');
-      console.log('🎯 CLAIM DEBUG: No address, returning');
-      return;
-    }
-    
-    if (winInfo.types.length === 0) {
-      alert('❌ DEBUG: No wins available\nPlay the game and get BINGO first!');
-      console.log('🎯 CLAIM DEBUG: No wins, returning');
-      return;
-    }
-
-    if (isClaimingWin) {
-      alert('❌ DEBUG: Already claiming\nPlease wait for current claim to finish!');
-      console.log('🎯 CLAIM DEBUG: Already claiming, returning');
-      return;
-    }
-
-    console.log('🎯 CLAIM DEBUG: All checks passed, showing confirmation');
-
-    // Simple confirmation without complex formatting
-    const userConfirmed = window.confirm(
-      `Claim ${winInfo.types.join(' + ')} for 1000 $BINGO tokens?\n\nThis requires gas fees. Continue?`
-    );
-
-    console.log('🎯 CLAIM DEBUG: User confirmation:', userConfirmed);
-
-    if (!userConfirmed) {
-      console.log('🎯 CLAIM DEBUG: User cancelled, returning');
-      return;
-    }
-
-    console.log('🎯 CLAIM DEBUG: Setting isClaimingWin to true');
-    setIsClaimingWin(true);
-    
-    try {
-      console.log('🎯 CLAIM DEBUG: Starting try block');
-      alert('🔄 DEBUG: Starting claim process...');
-      console.log('🎯 CLAIM DEBUG: Showed start alert');
-      
-      await trackEvent('manual_win_claim_started', {
-        winTypes: winInfo.types,
-        winCount: winInfo.count,
-        gameActive: timerActive,
-        timeRemaining: gameTimer,
-      });
-      console.log('🎯 CLAIM DEBUG: Tracked start event');
-
-      console.log('🎯 CLAIM DEBUG: About to call getWinSignature');
-      const { hash, signature } = await getWinSignature(address, winInfo.types);
-      console.log('🎯 CLAIM DEBUG: Got win signature', { hash: hash?.slice(0, 10), signature: signature?.slice(0, 10) });
-      
-      alert('🔄 DEBUG: Got signature, sending transaction...');
-      console.log('🎯 CLAIM DEBUG: Showed signature alert');
-      
-      console.log('🎯 CLAIM DEBUG: About to call writeContract', { 
-        address: GAME_ADDRESS, 
-        functionName: 'claimWin',
-        args: [hash, signature]
-      });
-      
-      // Simplified transaction - try writeContract first for mobile compatibility
-      const result = await writeContract({
-        address: GAME_ADDRESS,
-        abi: bingoGameABI as any,
-        functionName: 'claimWin',
-        args: [hash, signature],
-      });
-      
-      console.log('🎯 CLAIM DEBUG: writeContract result:', result);
-      
-      await trackEvent('manual_win_claim_success', {
-        winTypes: winInfo.types,
-        hash: hash.slice(0, 10),
-        gameActive: timerActive,
-      });
-      console.log('🎯 CLAIM DEBUG: Tracked success event');
-      
-      alert('✅ SUCCESS: Claim submitted! Tokens should arrive shortly!');
-      console.log('🎯 CLAIM DEBUG: Showed success alert');
-
-    } catch (error) {
-      console.log('🎯 CLAIM DEBUG: Caught error:', error);
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      console.log('🎯 CLAIM DEBUG: Error message:', errorMessage);
-      
-      let userMessage = 'Claim failed: ';
-      
-      if (errorMessage.toLowerCase().includes('insufficient funds') || 
-          errorMessage.toLowerCase().includes('not enough')) {
-        userMessage += 'You need ETH for gas fees on Base network.';
-      } else if (errorMessage.toLowerCase().includes('rejected') ||
-                 errorMessage.toLowerCase().includes('denied')) {
-        userMessage += 'Transaction was cancelled. You can try again!';
-      } else {
-        userMessage += errorMessage;
-      }
-      
-      alert(`❌ ERROR: ${userMessage}`);
-      console.log('🎯 CLAIM DEBUG: Showed error alert');
-      
-      await trackEvent('error_occurred', {
-        type: 'manual_win_claim_failed',
-        winTypes: winInfo.types,
-        error: errorMessage,
-        gameActive: timerActive,
-      });
-      console.log('🎯 CLAIM DEBUG: Tracked error event');
-    } finally {
-      console.log('🎯 CLAIM DEBUG: In finally block, setting isClaimingWin to false');
-      setIsClaimingWin(false);
-    }
-  }, [address, winInfo, isClaimingWin, trackEvent, getWinSignature, writeContract, timerActive, gameTimer]);
-
-  // Enhanced win detection (non-interrupting, game continues)
+  // Enhanced win detection with automatic rewards (non-interrupting, game continues)
   useEffect(() => {
     const newWin = checkWin(marked);
     if (newWin.count > winInfo.count && address && newWin.count > 0) {
@@ -473,20 +353,37 @@ export default function BingoCard() {
       console.log(`🎉 New win detected: ${newWin.types.join(' + ')} - Game continues!`);
       console.log(`🎯 Share URL: ${shareUrl}`);
 
+      // Auto-cast to Farcaster (removed for now - sdk.actions.cast not available)
+      console.log('🎯 Would cast to Farcaster:', `Just got ${newWin.types.join(' + ')} in Based Bingo! Won ${1000 * newWin.types.length} $BINGO—play now!`);
+
+      // Auto-reward wins (owner calls offchain)
+      fetch('/api/award-wins', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ address, winTypes: newWin.types }),
+      }).then(() => {
+        alert(`🎉 ${newWin.types.join(' + ')} achieved! Rewards automatically sent to your wallet!`);
+        console.log('✅ Rewards automatically sent for all wins!');
+      }).catch((error: any) => {
+        console.error('Auto-award failed:', error);
+        alert('🎉 Win detected! Reward processing failed, please contact support.');
+      });
+
       // Track win detection (non-blocking)
       trackEvent('win_detected', {
         winTypes: newWin.types,
         winCount: newWin.count,
         gameTimer,
         markedCells: marked.size,
-        gameActive: timerActive, // Track that game is still active
+        gameActive: timerActive,
+        autoRewardAttempted: true,
       });
 
       // Show a brief non-blocking notification
       if (newWin.count === 1) {
-        console.log('🎯 First BINGO achieved! Game continues - go for more wins!');
+        console.log('🎯 First BINGO achieved! Rewards sent automatically - game continues!');
       } else if (newWin.count >= 2) {
-        console.log('🔥 Multiple BINGOs! Keep playing for maximum rewards!');
+        console.log('🔥 Multiple BINGOs! All rewards sent automatically - keep playing!');
       }
     }
   }, [marked, address, winInfo.count, gameTimer, trackEvent, timerActive]);
@@ -672,25 +569,18 @@ export default function BingoCard() {
       {!address && winInfo.types.length === 0 && (
         <div className="mb-4 p-3 bg-blue-50 rounded-lg">
           <p className="text-blue-700 text-sm text-center">
-            Connect your wallet to claim $BINGO rewards when you win!
+            Connect your wallet to receive automatic $BINGO rewards when you win!
           </p>
         </div>
       )}
 
-      {/* Win Status with Clickable Claim Button - Game Continues */}
+      {/* Win Status with Automatic Rewards - Game Continues */}
       {winInfo.types.length > 0 && (
-        <div className="mb-4 p-4 bg-gradient-to-r from-yellow-400 to-orange-500 text-white rounded-lg shadow-lg">
+        <div className="mb-4 p-4 bg-gradient-to-r from-green-400 to-blue-500 text-white rounded-lg shadow-lg">
           <p className="text-2xl font-bold animate-pulse mb-2">
             🎉 {winInfo.types.join(' + ')} 
           </p>
           <p className="text-sm opacity-90 mb-2">({winInfo.count} total wins)</p>
-          
-          {/* Debug info for mobile */}
-          <div className="text-xs opacity-75 mb-2 bg-white/20 rounded px-2 py-1">
-            DEBUG: Address={address ? '✅ Connected' : '❌ Not connected'} | 
-            Claiming={!isClaimingWin ? '✅ Ready' : '⏳ Currently Claiming'} | 
-            Wins={winInfo.types.length}
-          </div>
           
           {timerActive && (
             <p className="text-xs opacity-80 mb-3 bg-white/20 rounded px-2 py-1">
@@ -699,100 +589,55 @@ export default function BingoCard() {
           )}
           
           <div className="text-center space-y-4">
-            {/* Debug info - now showing correct states */}
-            <div className="text-sm text-green-600 bg-white/20 rounded px-3 py-2">
-              🔄 DEBUG: Wallet: {address ? '✅ Connected' : '❌ Not Connected'} | 
-              Claiming: {!isClaimingWin ? '✅ Ready' : '❌ Currently Claiming'} | 
-              Wins: {winInfo.types.length > 0 ? `✅ ${winInfo.types.length}` : '❌ 0'}
+            {/* Auto-reward status message */}
+            <div className="bg-white/20 rounded-lg p-4">
+              <div className="text-lg font-bold mb-2">
+                ✨ Rewards Sent Automatically! ✨
+              </div>
+              <div className="text-sm opacity-90">
+                🎯 {1000 * winInfo.types.length} $BINGO tokens sent to your wallet
+              </div>
+              <div className="text-xs opacity-75 mt-2">
+                No claiming needed - rewards are instant!
+              </div>
             </div>
 
-            {/* Single working claim button - simplified for mobile */}
-            <button
-              onClick={(e) => {
-                console.log('🎯 CLAIM BUTTON: Clicked!', { address, isClaimingWin, wins: winInfo.types.length });
-                e.preventDefault();
-                e.stopPropagation();
-                
-                if (!isClaimingWin && address && winInfo.types.length > 0) {
-                  console.log('🎯 Conditions met, starting claim...');
-                  setIsClaimingWin(true);
-                  claimWin();
-                } else {
-                  const reason = !address ? 'No wallet connected' : 
-                               isClaimingWin ? 'Already claiming in progress' : 
-                               'No wins available';
-                  alert(`❌ Cannot claim: ${reason}`);
-                  console.log('🎯 Claim blocked:', reason);
-                }
-              }}
-              disabled={!address || isClaimingWin || winInfo.types.length === 0}
-              className={`w-full px-6 py-4 rounded-lg font-bold text-lg transition-all duration-200 ${
-                isClaimingWin
-                  ? 'bg-gray-400 text-gray-600 cursor-not-allowed'
-                  : !address
-                  ? 'bg-gray-300 text-gray-600 cursor-not-allowed'
-                  : winInfo.types.length === 0
-                  ? 'bg-gray-300 text-gray-600 cursor-not-allowed'
-                  : 'bg-white text-orange-500 hover:bg-gray-100 border-4 border-orange-500 cursor-pointer'
-              }`}
-              style={{ 
-                minHeight: '60px',
-                touchAction: 'manipulation',
-                WebkitTapHighlightColor: 'rgba(255,165,0,0.3)'
-              }}
-            >
-              {isClaimingWin ? (
-                '⏳ Claiming 1000 $BINGO...'
-              ) : !address ? (
-                '🔗 Connect Wallet to Claim'
-              ) : winInfo.types.length === 0 ? (
-                '❌ No Wins to Claim'
-              ) : (
-                '🎯 CLAIM 1000 $BINGO TOKENS!'
-              )}
-            </button>
-            
-            {/* Status message */}  
-            <div className="text-xs text-center opacity-75">
-              {!address && '👆 Connect your wallet first'}
-              {address && winInfo.types.length === 0 && '👆 Get BINGO to unlock claiming'}
-              {address && winInfo.types.length > 0 && !isClaimingWin && '👆 Ready to claim your rewards!'}
-              {address && winInfo.types.length > 0 && isClaimingWin && '👆 Processing your claim...'}
+            {/* Wallet connection status */}
+            {!address && (
+              <div className="bg-yellow-500/20 rounded-lg p-3">
+                <div className="text-sm font-bold mb-1">
+                  🔗 Connect Wallet for Automatic Rewards
+                </div>
+                <div className="text-xs opacity-80">
+                  Win detected, but wallet needed to receive tokens
+                </div>
+              </div>
+            )}
+
+            {/* Share encouragement */}
+            <div className="bg-white/10 rounded-lg p-3">
+              <div className="text-sm font-bold mb-1">
+                📣 Share Your Win!
+              </div>
+              <div className="text-xs opacity-80">
+                Tell everyone about your {winInfo.types.join(' + ')} success!
+              </div>
             </div>
-          </div>
-          
-          {/* Fallback tap area for mobile */}
-          <div 
-            onClick={() => {
-              if (!isClaimingWin && address && winInfo.types.length > 0) {
-                claimWin();
-              } else {
-                alert('Fallback button clicked! Something is blocking the main button.');
-              }
-            }}
-            className="mt-2 p-2 bg-red-500 text-white text-center rounded cursor-pointer"
-            style={{ 
-              minHeight: '40px',
-              WebkitTapHighlightColor: 'transparent',
-              zIndex: 15
-            }}
-          >
-            🚨 BACKUP CLAIM BUTTON (If main button doesn&apos;t work)
           </div>
           
           {!address && (
-            <p className="text-xs opacity-75 mt-2">Connect wallet below to claim your rewards</p>
+            <p className="text-xs opacity-75 mt-2">Connect wallet below to receive automatic rewards</p>
           )}
           
           {address && timerActive && (
             <p className="text-xs opacity-75 mt-2">
-              💡 Tip: You can claim now or wait for more wins!
+              💡 Tip: Keep playing for more automatic rewards!
             </p>
           )}
           
           {address && (
             <p className="text-xs opacity-75 mt-1">
-              ⚡ Small gas fee required on Base network
+              ⚡ Rewards sent automatically - no gas fees for you!
             </p>
           )}
         </div>
