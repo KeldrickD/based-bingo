@@ -656,7 +656,7 @@ export default function BingoCard() {
           {/* Debug info for mobile */}
           <div className="text-xs opacity-75 mb-2 bg-white/20 rounded px-2 py-1">
             DEBUG: Address={address ? '✅ Connected' : '❌ Not connected'} | 
-            Claiming={isClaimingWin ? '⏳ Yes' : '✅ Ready'} | 
+            Claiming={!isClaimingWin ? '✅ Ready' : '⏳ Currently Claiming'} | 
             Wins={winInfo.types.length}
           </div>
           
@@ -667,155 +667,66 @@ export default function BingoCard() {
           )}
           
           <div className="text-center space-y-4">
-            {/* Debug info - keeping this */}
-            <div className="text-sm text-green-600">
+            {/* Debug info - now showing correct states */}
+            <div className="text-sm text-green-600 bg-white/20 rounded px-3 py-2">
               🔄 DEBUG: Wallet: {address ? '✅ Connected' : '❌ Not Connected'} | 
-              Claiming: {isClaimingWin ? '✅ Ready' : '❌ Not Ready'} | 
+              Claiming: {!isClaimingWin ? '✅ Ready' : '❌ Currently Claiming'} | 
               Wins: {winInfo.types.length > 0 ? `✅ ${winInfo.types.length}` : '❌ 0'}
             </div>
 
-            {/* Console log test button */}
-            <div 
-              onClick={() => {
-                console.log('🚨 EMERGENCY: Click detected!', { address, isClaimingWin, wins: winInfo.types.length });
-                alert('🚨 EMERGENCY CLICK WORKS! Console check passed.');
-                if (!isClaimingWin && address && winInfo.types.length > 0) {
-                  claimWin();
-                }
-              }}
-              onTouchStart={(e) => {
-                console.log('🚨 EMERGENCY: Touch detected!');
-                e.preventDefault();
-              }}
-              className="w-full p-4 bg-red-600 text-white text-center rounded-lg cursor-pointer text-lg font-bold border-4 border-yellow-400"
-              style={{ 
-                position: 'relative',
-                zIndex: 9999,
-                minHeight: '80px',
-                WebkitTapHighlightColor: 'rgba(255,255,0,0.5)',
-                touchAction: 'manipulation',
-                userSelect: 'none'
-              }}
-            >
-              🚨 EMERGENCY TEST BUTTON - TAP ME FIRST! 🚨
-              <br />
-              (This should show alert if clicks work at all)
-            </div>
-
-            {/* Original main button with more aggressive approach */}
-            <div
+            {/* Single working claim button - simplified for mobile */}
+            <button
               onClick={(e) => {
-                console.log('🎯 MAIN BUTTON: Click detected!', e);
-                alert('🎯 MAIN BUTTON CLICKED!');
+                console.log('🎯 CLAIM BUTTON: Clicked!', { address, isClaimingWin, wins: winInfo.types.length });
                 e.preventDefault();
                 e.stopPropagation();
+                
                 if (!isClaimingWin && address && winInfo.types.length > 0) {
-                  console.log('🎯 Starting claim process...');
+                  console.log('🎯 Conditions met, starting claim...');
+                  setIsClaimingWin(true);
                   claimWin();
                 } else {
-                  alert(`❌ Can't claim: ${!address ? 'No wallet' : isClaimingWin ? 'Already claiming' : 'No wins'}`);
+                  const reason = !address ? 'No wallet connected' : 
+                               isClaimingWin ? 'Already claiming in progress' : 
+                               'No wins available';
+                  alert(`❌ Cannot claim: ${reason}`);
+                  console.log('🎯 Claim blocked:', reason);
                 }
               }}
-              onTouchStart={(e) => {
-                console.log('🎯 MAIN BUTTON: Touch detected!');
-                e.preventDefault();
-              }}
-              onTouchEnd={(e) => {
-                console.log('🎯 MAIN BUTTON: Touch ended!');
-                e.preventDefault();
-                if (!isClaimingWin && address && winInfo.types.length > 0) {
-                  claimWin();
-                }
-              }}
-              className="w-full px-6 py-4 bg-white text-orange-500 rounded-lg font-bold text-lg border-4 border-orange-500 cursor-pointer"
+              disabled={!address || isClaimingWin || winInfo.types.length === 0}
+              className={`w-full px-6 py-4 rounded-lg font-bold text-lg transition-all duration-200 ${
+                isClaimingWin
+                  ? 'bg-gray-400 text-gray-600 cursor-not-allowed'
+                  : !address
+                  ? 'bg-gray-300 text-gray-600 cursor-not-allowed'
+                  : winInfo.types.length === 0
+                  ? 'bg-gray-300 text-gray-600 cursor-not-allowed'
+                  : 'bg-white text-orange-500 hover:bg-gray-100 border-4 border-orange-500 cursor-pointer'
+              }`}
               style={{ 
-                WebkitTapHighlightColor: 'rgba(255,165,0,0.5)',
-                WebkitUserSelect: 'none',
-                userSelect: 'none',
-                outline: 'none',
-                minHeight: '80px',
-                display: 'block',
-                position: 'relative',
-                zIndex: 9998,
-                touchAction: 'manipulation'
+                minHeight: '60px',
+                touchAction: 'manipulation',
+                WebkitTapHighlightColor: 'rgba(255,165,0,0.3)'
               }}
             >
               {isClaimingWin ? (
                 '⏳ Claiming 1000 $BINGO...'
               ) : !address ? (
                 '🔗 Connect Wallet to Claim'
+              ) : winInfo.types.length === 0 ? (
+                '❌ No Wins to Claim'
               ) : (
                 '🎯 CLAIM 1000 $BINGO TOKENS!'
               )}
+            </button>
+            
+            {/* Status message */}  
+            <div className="text-xs text-center opacity-75">
+              {!address && '👆 Connect your wallet first'}
+              {address && winInfo.types.length === 0 && '👆 Get BINGO to unlock claiming'}
+              {address && winInfo.types.length > 0 && !isClaimingWin && '👆 Ready to claim your rewards!'}
+              {address && winInfo.types.length > 0 && isClaimingWin && '👆 Processing your claim...'}
             </div>
-
-            {/* Alternative approach - try to bypass any blocking */}
-            <div 
-              onMouseDown={() => {
-                console.log('🔥 MOUSEDOWN detected!');
-                alert('🔥 MOUSEDOWN BUTTON WORKS!');
-                if (!isClaimingWin && address && winInfo.types.length > 0) {
-                  claimWin();
-                }
-              }}
-              className="w-full p-4 bg-purple-600 text-white text-center rounded-lg cursor-pointer text-lg font-bold"
-              style={{ 
-                minHeight: '60px',
-                zIndex: 9997,
-                touchAction: 'manipulation'
-              }}
-            >
-              🔥 MOUSEDOWN BUTTON (Different event type)
-            </div>
-
-            {/* Link-based approach */}
-            <div 
-              className="w-full p-4 bg-green-600 text-white text-center rounded-lg text-lg font-bold"
-              style={{ minHeight: '60px', zIndex: 9996 }}
-            >
-              <a 
-                href="#"
-                onClick={(e) => {
-                  console.log('🔗 LINK: Click detected!');
-                  alert('🔗 LINK BUTTON WORKS!');
-                  e.preventDefault();
-                  if (!isClaimingWin && address && winInfo.types.length > 0) {
-                    claimWin();
-                  }
-                  return false;
-                }}
-                style={{ 
-                  color: 'white', 
-                  textDecoration: 'none', 
-                  display: 'block',
-                  width: '100%',
-                  height: '100%',
-                  paddingTop: '15px'
-                }}
-              >
-                🔗 LINK BUTTON (href approach)
-              </a>
-            </div>
-
-            {/* Form submit approach */}
-            <form 
-              onSubmit={(e) => {
-                console.log('📝 FORM: Submit detected!');
-                alert('📝 FORM SUBMIT WORKS!');
-                e.preventDefault();
-                if (!isClaimingWin && address && winInfo.types.length > 0) {
-                  claimWin();
-                }
-              }}
-              style={{ zIndex: 9995 }}
-            >
-              <input 
-                type="submit" 
-                value="📝 FORM SUBMIT BUTTON"
-                className="w-full p-4 bg-blue-600 text-white rounded-lg cursor-pointer text-lg font-bold"
-                style={{ minHeight: '60px' }}
-              />
-            </form>
           </div>
           
           {/* Fallback tap area for mobile */}
