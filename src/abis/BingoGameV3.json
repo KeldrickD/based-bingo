@@ -1,0 +1,26 @@
+[
+  {
+    "inputs": [],
+    "name": "join",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "buyUnlimited", 
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {"internalType": "address", "name": "player", "type": "address"},
+      {"internalType": "string[]", "name": "winTypes", "type": "string[]"}
+    ],
+    "name": "awardWins",
+    "outputs": [],
+    "stateMutability": "nonpayable", 
+    "type": "function"
+  }
+] 

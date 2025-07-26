@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { ethers } from 'ethers';
 
-// ABI for the awardWins function
-const bingoGameABI = [
+// BingoGameV3 ABI
+const bingoGameV3ABI = [
   {
     "inputs": [
       {"internalType": "address", "name": "player", "type": "address"},
@@ -48,34 +48,56 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    console.log('🎯 Auto-awarding wins:', { address, winTypes });
+    console.log('🎯 Auto-awarding wins:', { 
+      address: `${address.slice(0, 6)}...${address.slice(-4)}`, 
+      winTypes,
+      timestamp: new Date().toISOString()
+    });
 
     // Set up provider and signer
     const provider = new ethers.JsonRpcProvider(BASE_RPC_URL);
     const signer = new ethers.Wallet(ownerPrivateKey, provider);
     
+    // Verify signer has ETH for gas
+    const balance = await provider.getBalance(signer.address);
+    console.log('👛 Owner wallet balance:', ethers.formatEther(balance), 'ETH');
+    
+    if (balance < ethers.parseEther('0.001')) {
+      console.error('❌ Owner wallet has insufficient ETH for gas');
+      return NextResponse.json(
+        { error: 'Server error: insufficient gas funds' },
+        { status: 500 }
+      );
+    }
+    
     // Create contract instance
-    const contract = new ethers.Contract(GAME_ADDRESS, bingoGameABI, signer);
+    const contract = new ethers.Contract(GAME_ADDRESS, bingoGameV3ABI, signer);
 
     // Call awardWins function
     console.log('📞 Calling awardWins on contract...');
-    const tx = await contract.awardWins(address, winTypes);
+    const tx = await contract.awardWins(address, winTypes, {
+      gasLimit: 200000, // Set reasonable gas limit
+    });
     
     console.log('⏳ Transaction submitted:', tx.hash);
     
     // Wait for confirmation
     const receipt = await tx.wait();
-    console.log('✅ Transaction confirmed:', receipt.hash);
+    console.log('✅ Transaction confirmed in block:', receipt.blockNumber);
 
-    // Track success
-    console.log(`✅ Successfully awarded ${winTypes.join(' + ')} to ${address}`);
+    // Calculate rewards
+    const totalRewards = 1000 * winTypes.length;
+    console.log(`✅ Successfully awarded ${totalRewards} $BINGO (${winTypes.join(' + ')}) to ${address}`);
 
     return NextResponse.json({
       success: true,
       message: `Rewards sent: ${winTypes.join(' + ')}`,
       transactionHash: receipt.hash,
+      blockNumber: receipt.blockNumber,
       winTypes,
-      address
+      playerAddress: address,
+      totalRewards,
+      gasUsed: receipt.gasUsed?.toString(),
     });
 
   } catch (error: any) {
@@ -87,17 +109,32 @@ export async function POST(request: NextRequest) {
     if (error.message?.includes('insufficient funds')) {
       errorMessage = 'Insufficient ETH for gas fees in owner wallet';
     } else if (error.message?.includes('execution reverted')) {
-      errorMessage = 'Contract execution failed - possible duplicate claim';
-    } else if (error.message?.includes('network')) {
-      errorMessage = 'Network connection error';
+      errorMessage = 'Contract execution failed - possible duplicate claim or contract issue';
+      statusCode = 400;
+    } else if (error.message?.includes('network') || error.message?.includes('connection')) {
+      errorMessage = 'Network connection error - please try again';
+      statusCode = 503;
+    } else if (error.message?.includes('nonce too low')) {
+      errorMessage = 'Transaction nonce error - please try again';
+      statusCode = 429;
     } else if (error.message) {
       errorMessage = error.message;
     }
+
+    // Log detailed error for debugging
+    console.error('📝 Detailed error info:', {
+      message: error.message,
+      code: error.code,
+      reason: error.reason,
+      transaction: error.transaction,
+      stack: error.stack?.split('\n').slice(0, 5), // First 5 lines of stack
+    });
 
     return NextResponse.json(
       {
         error: 'Failed to award wins',
         details: errorMessage,
+        timestamp: new Date().toISOString(),
       },
       { status: statusCode }
     );

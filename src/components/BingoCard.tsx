@@ -2,34 +2,36 @@
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { sdk } from '@farcaster/miniapp-sdk';
-import { toPng } from 'html-to-image';
-import { useAccount, useWriteContract } from 'wagmi';
+import html2canvas from 'html2canvas';
+import { useAccount } from 'wagmi';
 import { useWriteContracts } from 'wagmi/experimental';
-import { keccak256, stringToHex } from 'viem';
 import basedBingoABI from '@/abis/BasedBingo.json';
-import bingoGameABI from '@/abis/BingoGame.json';
+import bingoGameV3ABI from '@/abis/BingoGameV3.json';
 
 const TOKEN_ADDRESS = '0xd5D90dF16CA7b11Ad852e3Bf93c0b9b774CEc047' as `0x${string}`;
 const GAME_ADDRESS = '0x4CE879376Dc50aBB1Eb8F236B76e8e5a724780Be' as `0x${string}`;
 
 function generateBingoCard() {
   const columnRanges = [
-    { label: 'B', min: 1, max: 15 }, 
-    { label: 'I', min: 16, max: 30 }, 
-    { label: 'N', min: 31, max: 45 }, 
-    { label: 'G', min: 46, max: 60 }, 
+    { label: 'B', min: 1, max: 15 },
+    { label: 'I', min: 16, max: 30 },
+    { label: 'N', min: 31, max: 45 },
+    { label: 'G', min: 46, max: 60 },
     { label: 'O', min: 61, max: 75 }
   ];
   
   const card: (number | string)[][] = columnRanges.map(({ min, max }) => 
-    [...Array(max - min + 1)].map((_, i) => min + i).sort(() => Math.random() - 0.5).slice(0, 5)
+    [...Array(max - min + 1)].map((_, i) => min + i)
+      .sort(() => Math.random() - 0.5)
+      .slice(0, 5)
   );
   
-  card[2][2] = 'FREE';
+  // Set center cell as FREE
+  (card[2] as (number | string)[])[2] = 'FREE';
   return card;
 }
 
-function checkWin(marked: Set<string>): { count: number; types: string[] } {
+const checkWin = (marked: Set<string>) => {
   const positions = [
     // Rows
     ['00', '01', '02', '03', '04'], ['10', '11', '12', '13', '14'], ['20', '21', '22', '23', '24'],
@@ -41,8 +43,8 @@ function checkWin(marked: Set<string>): { count: number; types: string[] } {
     ['00', '11', '22', '33', '44'], ['04', '13', '22', '31', '40'],
   ];
   
-  const completed = positions.filter((line) => 
-    line.every((pos) => marked.has(pos) || pos === '22')
+  const completed = positions.filter(line => 
+    line.every(pos => marked.has(pos) || pos === '22')
   );
   
   const count = completed.length;
@@ -53,16 +55,16 @@ function checkWin(marked: Set<string>): { count: number; types: string[] } {
   if (count === 12) types.push('Full House!');
   
   return { count, types };
-}
+};
 
 export default function BingoCard() {
   const { address } = useAccount();
-  const { writeContract } = useWriteContract();
   const { writeContracts } = useWriteContracts();
   
   // Game state
   const [card, setCard] = useState<(number | string)[][]>([]);
   const [marked, setMarked] = useState<Set<string>>(new Set(['22']));
+  const [currentNumber, setCurrentNumber] = useState<number | null>(null);
   const [drawnNumbers, setDrawnNumbers] = useState<Set<number>>(new Set());
   const [recentDraws, setRecentDraws] = useState<number[]>([]);
   const [winInfo, setWinInfo] = useState<{ count: number; types: string[] }>({ count: 0, types: [] });
@@ -73,103 +75,12 @@ export default function BingoCard() {
   
   // Daily limits state
   const [dailyPlays, setDailyPlays] = useState(0);
+  const [lastPlayDate, setLastPlayDate] = useState('');
   const [unlimitedToday, setUnlimitedToday] = useState(false);
   const [isProcessingPayment, setIsProcessingPayment] = useState(false);
   const MAX_FREE_PLAYS = 3;
 
-  // Analytics tracking
-  const trackEvent = useCallback(async (event: string, data?: Record<string, unknown>) => {
-    try {
-      await fetch('/api/analytics', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          event,
-          player: address,
-          data,
-          sessionId: sessionStorage.getItem('gameSessionId') || `session-${Date.now()}`,
-        }),
-      });
-    } catch (error) {
-      console.error('Analytics tracking failed:', error);
-    }
-  }, [address]);
-
-  // Initialize session tracking
-  useEffect(() => {
-    if (!sessionStorage.getItem('gameSessionId')) {
-      sessionStorage.setItem('gameSessionId', `session-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`);
-    }
-  }, []);
-
-  // Enhanced signature generation with retry logic
-  const getWinSignature = useCallback(async (address: string, winTypes: string[], retries = 3) => {
-    for (let attempt = 1; attempt <= retries; attempt++) {
-      try {
-        console.log(`🔐 Attempting win signature generation (attempt ${attempt}/${retries})`);
-        
-        const response = await fetch('/api/verify-win', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            address,
-            winTypes,
-            gameId: `game-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-          }),
-        });
-
-        if (!response.ok) {
-          const errorData = await response.json().catch(() => ({}));
-          throw new Error(errorData.error || `HTTP ${response.status}: ${response.statusText}`);
-        }
-
-        const data = await response.json();
-        
-        if (!data.success) {
-          throw new Error(data.error || 'Backend returned success: false');
-        }
-
-        console.log('✅ Win signature generated successfully');
-        await trackEvent('win_signature_generated', { 
-          winTypes, 
-          attempt,
-          processingTime: Date.now() - ((window as { winDetectionTime?: number }).winDetectionTime || 0),
-        });
-
-        return {
-          hash: data.hash,
-          signature: data.signature,
-          winData: data.winData,
-        };
-
-      } catch (error) {
-        console.error(`❌ Signature attempt ${attempt} failed:`, error);
-        
-        if (attempt === retries) {
-          console.warn('⚠️  Using fallback signature generation');
-          await trackEvent('win_signature_fallback', { 
-            winTypes, 
-            attempts: retries,
-            error: error instanceof Error ? error.message : 'Unknown error',
-          });
-          
-          // Fallback to client-side signature
-          const winData = `${address}-${winTypes.join('-')}-${Date.now()}`;
-          const hash = keccak256(stringToHex(winData));
-          const mockSignature = '0x' + '1'.repeat(128);
-          
-          return { hash, signature: mockSignature, winData: null };
-        }
-        
-        // Wait before retry (exponential backoff)
-        await new Promise(resolve => setTimeout(resolve, 1000 * attempt));
-      }
-    }
-    
-    throw new Error('All signature generation attempts failed');
-  }, [trackEvent]);
-
-  // Daily limit initialization
+  // Initialize daily limits
   useEffect(() => {
     const today = new Date().toISOString().split('T')[0];
     const storedDate = localStorage.getItem('lastPlayDate');
@@ -180,13 +91,30 @@ export default function BingoCard() {
       localStorage.setItem('lastPlayDate', today);
       localStorage.setItem('dailyPlays', '0');
       localStorage.removeItem('unlimitedDate');
+      setLastPlayDate(today);
       setDailyPlays(0);
       setUnlimitedToday(false);
     } else {
+      setLastPlayDate(storedDate || '');
       setDailyPlays(storedPlays);
       setUnlimitedToday(storedUnlimited);
     }
   }, []);
+
+  const resetGame = useCallback(() => {
+    setCard(generateBingoCard());
+    setMarked(new Set(['22']));
+    setCurrentNumber(null);
+    setDrawnNumbers(new Set());
+    setRecentDraws([]);
+    setWinInfo({ count: 0, types: [] });
+    setGameTimer(120);
+    setTimerActive(false);
+    if (autoDrawInterval) {
+      clearInterval(autoDrawInterval);
+      setAutoDrawInterval(null);
+    }
+  }, [autoDrawInterval]);
 
   const stopAutoDraw = useCallback(() => {
     if (autoDrawInterval) {
@@ -195,66 +123,14 @@ export default function BingoCard() {
     }
   }, [autoDrawInterval]);
 
-  const resetGame = useCallback(() => {
-    const newCard = generateBingoCard();
-    setCard(newCard);
-    setMarked(new Set(['22']));
-    setDrawnNumbers(new Set());
-    setRecentDraws([]);
-    setWinInfo({ count: 0, types: [] });
-    setGameTimer(120);
-    setTimerActive(false);
-    if (autoDrawInterval) clearInterval(autoDrawInterval);
-  }, [autoDrawInterval]);
-
-  // Game timer management (only stops on natural completion)
-  useEffect(() => {
-    if (timerActive && gameTimer > 0) {
-      const interval = setInterval(() => setGameTimer((prev) => prev - 1), 1000);
-      return () => clearInterval(interval);
-    } else if (gameTimer === 0 && timerActive) {
-      // Game ends naturally
-      stopAutoDraw();
-      setTimerActive(false);
-      console.log('🎮 Game completed naturally - time expired');
-      
-      if (winInfo.types.length > 0) {
-        alert(`⏰ Time up! Final result: ${winInfo.types.join(' + ')} - Don't forget to claim your rewards!`);
-      } else {
-        alert('⏰ Time up! Game over. Better luck next time!');
-      }
-      
-      trackEvent('game_completed', { 
-        reason: 'timeout', 
-        gameTimer: 0,
-        finalWins: winInfo.types,
-        finalWinCount: winInfo.count,
-      });
-    }
-  }, [timerActive, gameTimer, stopAutoDraw, trackEvent, winInfo]);
-
   const startAutoDraw = useCallback(() => {
     const interval = setInterval(() => {
-      setDrawnNumbers((prevDrawn) => {
+      setDrawnNumbers(prevDrawn => {
         if (prevDrawn.size >= 75) {
-          // Natural game completion - all numbers drawn
-          console.log('🎮 Game completed naturally - all numbers drawn');
-          stopAutoDraw();
+          console.log('🎮 All numbers drawn - game complete');
+          clearInterval(interval);
           setTimerActive(false);
-          
-          trackEvent('game_completed', { 
-            reason: 'all_numbers_drawn', 
-            drawnNumbers: 75,
-            finalWins: winInfo.types,
-            finalWinCount: winInfo.count,
-          });
-          
-          if (winInfo.types.length > 0) {
-            alert(`🎯 All numbers drawn! Final result: ${winInfo.types.join(' + ')} - Claim your rewards!`);
-          } else {
-            alert('🎯 All numbers drawn! Game complete.');
-          }
-          
+          alert('🎯 All numbers drawn! Game complete.');
           return prevDrawn;
         }
         
@@ -264,15 +140,27 @@ export default function BingoCard() {
         } while (prevDrawn.has(num));
         
         const newDrawn = new Set([...prevDrawn, num]);
-        setRecentDraws((prev) => [...prev, num].slice(-5));
+        setCurrentNumber(num);
+        setRecentDraws(prev => [...prev, num].slice(-5));
         
         return newDrawn;
       });
     }, 3000);
     setAutoDrawInterval(interval);
-  }, [stopAutoDraw, trackEvent, winInfo]);
+  }, []);
 
-  // Enhanced game start with analytics (removed entry fee for better onboarding)
+  // Game timer management
+  useEffect(() => {
+    if (timerActive && gameTimer > 0) {
+      const timer = setInterval(() => setGameTimer(prev => prev - 1), 1000);
+      return () => clearInterval(timer);
+    } else if (gameTimer === 0 && timerActive) {
+      stopAutoDraw();
+      setTimerActive(false);
+      alert('⏰ Time up! Game over.');
+    }
+  }, [timerActive, gameTimer, stopAutoDraw]);
+
   const startGame = useCallback(async () => {
     if (!unlimitedToday && dailyPlays >= MAX_FREE_PLAYS) {
       alert('Daily free plays used up! Share on Farcaster for +1 play or buy unlimited access.');
@@ -280,225 +168,212 @@ export default function BingoCard() {
     }
 
     console.log('🎮 Starting new game...');
-    await trackEvent('game_started', {
-      unlimited: unlimitedToday,
-      dailyPlays,
-      gameTime: new Date().toISOString(),
-    });
-
     resetGame();
     setTimerActive(true);
     startAutoDraw();
 
-    // Remove entry fee for better user onboarding - game is now free to play
-    if (!unlimitedToday && address) {
+    // Join game via contract if wallet connected
+    if (address && !unlimitedToday) {
       try {
-        console.log('🎮 Game started successfully - no entry fee required!');
+        console.log('📞 Calling contract join...');
+        await writeContracts({
+          contracts: [
+            {
+              address: GAME_ADDRESS,
+              abi: bingoGameV3ABI as any,
+              functionName: 'join',
+              args: [],
+            },
+          ],
+          capabilities: process.env.NEXT_PUBLIC_CDP_RPC ? {
+            paymasterService: { url: process.env.NEXT_PUBLIC_CDP_RPC },
+          } : undefined,
+        });
         
-        // Update plays count
+        console.log('✅ Successfully joined game');
         const newPlays = dailyPlays + 1;
         setDailyPlays(newPlays);
         localStorage.setItem('dailyPlays', newPlays.toString());
         
-        await trackEvent('game_joined_successfully', {
-          unlimited: unlimitedToday,
-          totalPlays: newPlays,
-          freeToPlay: true,
-        });
-        
       } catch (error) {
-        console.error('❌ Game start failed:', error);
-        await trackEvent('error_occurred', {
-          type: 'game_start_failed',
-          error: error instanceof Error ? error.message : 'Unknown error',
-          unlimited: unlimitedToday,
-        });
-        alert('Failed to start game: ' + (error instanceof Error ? error.message : 'Please try again'));
+        console.error('❌ Join failed:', error);
+        alert('Join failed: ' + (error instanceof Error ? error.message : 'Check network or paymaster'));
+        // Continue game even if join fails
       }
     } else if (!address) {
-      // Game can be played without wallet connection for demo purposes
+      // Demo mode - increment plays for rate limiting
       const newPlays = dailyPlays + 1;
       setDailyPlays(newPlays);
       localStorage.setItem('dailyPlays', newPlays.toString());
-      console.log('🎮 Demo game started - connect wallet to claim rewards!');
+      console.log('🎮 Demo game started - connect wallet for rewards!');
     }
-  }, [unlimitedToday, dailyPlays, address, trackEvent, resetGame, startAutoDraw]);
+  }, [unlimitedToday, dailyPlays, address, writeContracts, resetGame, startAutoDraw]);
 
   const markCell = useCallback((row: number, col: number) => {
     const num = card[col]?.[row] ?? '';
     if (typeof num === 'number' && recentDraws.includes(num)) {
       const pos = `${col}${row}`;
-      setMarked((prev) => new Set([...prev, pos]));
+      setMarked(prev => new Set([...prev, pos]));
     }
   }, [card, recentDraws]);
 
-  // Enhanced win detection with automatic rewards (non-interrupting, game continues)
+  // Win detection with automatic rewards
   useEffect(() => {
     const newWin = checkWin(marked);
     if (newWin.count > winInfo.count && address && newWin.count > 0) {
       setWinInfo(newWin);
       
-      // Generate win image (non-blocking)
+      // Generate win image
       if (gridRef.current) {
-        toPng(gridRef.current).then((dataUrl) => {
-          console.log('📸 Win image generated:', dataUrl);
+        html2canvas(gridRef.current).then((canvas) => {
+          const imageData = canvas.toDataURL('image/png');
+          console.log('📸 Win image generated:', imageData);
         }).catch((error) => {
           console.error('Failed to generate win image:', error);
         });
       }
 
-      const winType = newWin.types[newWin.types.length - 1].toLowerCase().replace(/!/g, '').replace(/\s/g, '-');
+      const winType = newWin.types[newWin.types.length - 1]
+        .toLowerCase()
+        .replace(/!/g, '')
+        .replace(/\s/g, '-');
       const shareUrl = `https://basedbingo.xyz/win/${winType}`;
       
-      console.log(`🎉 New win detected: ${newWin.types.join(' + ')} - Game continues!`);
-      console.log(`🎯 Share URL: ${shareUrl}`);
+      console.log(`🎉 New win detected: ${newWin.types.join(' + ')}`);
+      alert(`🎉 New win! Share on Farcaster: ${shareUrl}`);
 
-      // Auto-cast to Farcaster (removed for now - sdk.actions.cast not available)
-      console.log('🎯 Would cast to Farcaster:', `Just got ${newWin.types.join(' + ')} in Based Bingo! Won ${1000 * newWin.types.length} $BINGO—play now!`);
+      // Auto-cast to Farcaster
+      try {
+        // Note: sdk.actions.cast may not be available in all environments
+        if ('actions' in sdk && 'cast' in (sdk as any).actions) {
+          (sdk as any).actions.cast({
+            text: `Just got ${newWin.types.join(' + ')} in Based Bingo! Won ${1000 * newWin.types.length} $BINGO—play now!`,
+            embeds: [{ url: shareUrl }],
+          }).catch((error: any) => console.error('Cast failed:', error));
+        } else {
+          console.log('Farcaster cast not available in this environment');
+        }
+      } catch (error: any) {
+        console.error('Farcaster cast failed:', error);
+      }
 
-      // Auto-reward wins (owner calls offchain)
+      // Auto-award wins via backend
       fetch('/api/award-wins', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ address, winTypes: newWin.types }),
-      }).then(() => {
-        alert(`🎉 ${newWin.types.join(' + ')} achieved! Rewards automatically sent to your wallet!`);
-        console.log('✅ Rewards automatically sent for all wins!');
-      }).catch((error: any) => {
-        console.error('Auto-award failed:', error);
-        alert('🎉 Win detected! Reward processing failed, please contact support.');
+      })
+      .then(res => {
+        if (!res.ok) throw new Error(`Server responded with ${res.status}`);
+        return res.json();
+      })
+      .then(data => {
+        console.log('✅ Rewards awarded:', data);
+        alert(`🎉 ${1000 * newWin.types.length} $BINGO automatically awarded to your wallet!`);
+      })
+      .catch((error) => {
+        console.error('❌ Award failed:', error);
+        alert('🎉 Win detected! However, reward processing failed. Please contact support.');
       });
-
-      // Track win detection (non-blocking)
-      trackEvent('win_detected', {
-        winTypes: newWin.types,
-        winCount: newWin.count,
-        gameTimer,
-        markedCells: marked.size,
-        gameActive: timerActive,
-        autoRewardAttempted: true,
-      });
-
-      // Show a brief non-blocking notification
-      if (newWin.count === 1) {
-        console.log('🎯 First BINGO achieved! Rewards sent automatically - game continues!');
-      } else if (newWin.count >= 2) {
-        console.log('🔥 Multiple BINGOs! All rewards sent automatically - keep playing!');
-      }
     }
-  }, [marked, address, winInfo.count, gameTimer, trackEvent, timerActive]);
+  }, [marked, address, winInfo.count]);
 
-  const shareForExtraPlay = useCallback(async () => {
+  const shareForExtraPlay = async () => {
     try {
-      console.log('📢 Share requested for extra play');
-      // Note: Farcaster sharing temporarily disabled for build compatibility
+      console.log('📢 Sharing for extra play...');
+      
+      // Note: sdk.actions.cast may not be available in all environments
+      if ('actions' in sdk && 'cast' in (sdk as any).actions) {
+        await (sdk as any).actions.cast({
+          text: 'Loving Based Bingo—join the fun! https://basedbingo.xyz',
+          embeds: [{ url: 'https://basedbingo.xyz' }],
+        });
+      } else {
+        console.log('Farcaster cast not available, granting extra play anyway');
+      }
+      
       setDailyPlays(0);
       localStorage.setItem('dailyPlays', '0');
+      alert('🎉 Shared successfully! You get +1 play today.');
       
-      await trackEvent('extra_play_shared', { previousPlays: dailyPlays });
-      alert('🎉 Extra play granted! (Auto-share coming soon)');
-      
-    } catch (error) {
+    } catch (error: any) {
       console.error('❌ Share failed:', error);
-      alert('Share failed—try again.');
+      alert('Share failed—please try again.');
     }
-  }, [dailyPlays, trackEvent]);
+  };
 
-  const payForUnlimited = useCallback(async () => {
+  const payForUnlimited = async () => {
     if (!address) {
-      alert('Please connect your wallet.');
+      alert('Please connect your wallet first.');
       return;
     }
 
     if (isProcessingPayment) return;
-
     setIsProcessingPayment(true);
-    const purchaseStartTime = Date.now();
 
     try {
-      console.log('💳 Purchasing unlimited play...');
+      console.log('💳 Purchasing unlimited access...');
       
-      await trackEvent('unlimited_purchase_started', {
-        currentPlays: dailyPlays,
-        timestamp: new Date().toISOString(),
-      });
-
-      if (process.env.NEXT_PUBLIC_CDP_RPC && writeContracts) {
-        // Try gasless batch transaction
-        await writeContracts({
-          contracts: [
-            {
-              address: TOKEN_ADDRESS,
-              abi: basedBingoABI as any,
-              functionName: 'approve',
-              args: [GAME_ADDRESS, BigInt(50 * Math.pow(10, 18))],
-            },
-            {
-              address: GAME_ADDRESS,
-              abi: bingoGameABI as any,
-              functionName: 'buyUnlimited',
-              args: [],
-            },
-          ],
-          capabilities: {
-            paymasterService: { url: process.env.NEXT_PUBLIC_CDP_RPC },
+      await writeContracts({
+        contracts: [
+          {
+            address: TOKEN_ADDRESS,
+            abi: basedBingoABI as any,
+            functionName: 'approve',
+            args: [GAME_ADDRESS, BigInt(50 * Math.pow(10, 18))],
           },
-        });
-      } else {
-        // Fallback: Sequential transactions
-        writeContract({
-          address: TOKEN_ADDRESS,
-          abi: basedBingoABI as any,
-          functionName: 'approve',
-          args: [GAME_ADDRESS, BigInt(50 * Math.pow(10, 18))],
-        });
-        
-        setTimeout(() => {
-          writeContract({
+          {
             address: GAME_ADDRESS,
-            abi: bingoGameABI as any,
+            abi: bingoGameV3ABI as any,
             functionName: 'buyUnlimited',
             args: [],
-          });
-        }, 2000);
-      }
-
-      // Update UI
+          },
+        ],
+        capabilities: process.env.NEXT_PUBLIC_CDP_RPC ? {
+          paymasterService: { url: process.env.NEXT_PUBLIC_CDP_RPC },
+        } : undefined,
+      });
+      
       const today = new Date().toISOString().split('T')[0];
       localStorage.setItem('unlimitedDate', today);
       setUnlimitedToday(true);
-      
-      await trackEvent('unlimited_purchased', {
-        processingTime: Date.now() - purchaseStartTime,
-        previousPlays: dailyPlays,
-        timestamp: new Date().toISOString(),
-      });
-      
       alert('✅ Unlimited access unlocked for today with 50 $BINGO!');
       console.log('✅ Unlimited purchase completed');
       
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
       console.error('❌ Unlimited purchase failed:', error);
-      
-      await trackEvent('error_occurred', {
-        type: 'unlimited_purchase_failed',
-        error: errorMessage,
-        processingTime: Date.now() - purchaseStartTime,
-      });
-      
-      alert(`Failed to purchase unlimited access: ${errorMessage}\nMake sure you have 50 $BINGO tokens and enough ETH for gas.`);
+      alert('Failed to purchase unlimited access: ' + 
+        (error instanceof Error ? error.message : 'Check $BINGO balance and network'));
     } finally {
       setIsProcessingPayment(false);
     }
-  }, [address, isProcessingPayment, dailyPlays, trackEvent, writeContracts, writeContract]);
+  };
 
   return (
     <div className="text-center max-w-sm mx-auto">
-      {/* Timer and Recent Draws at Top */}
+      {/* Wallet Connection */}
+      {!address ? (
+        <div className="mb-4 p-3 bg-blue-50 rounded-lg">
+          <button className="w-full bg-coinbase-blue text-white px-6 py-2 rounded-lg font-bold hover:bg-blue-600 mb-2">
+            Connect Wallet
+          </button>
+          <p className="text-xs text-blue-700">Connect for automatic $BINGO rewards</p>
+        </div>
+      ) : (
+        <div className="mb-4 p-2 bg-green-50 rounded-lg">
+          <p className="text-sm text-coinbase-blue font-semibold">
+            Connected: {address.slice(0, 6)}...{address.slice(-4)}
+          </p>
+          {process.env.NEXT_PUBLIC_CDP_RPC && (
+            <p className="text-xs text-green-600">⚡ Gasless transactions enabled</p>
+          )}
+        </div>
+      )}
+
+      {/* Timer */}
       {timerActive && (
         <div className="mb-4">
-          <p className="text-xl text-red-500 font-bold animate-pulse mb-3">
+          <p className="text-xl text-red-500 font-bold animate-pulse">
             ⏰ Time Left: {Math.floor(gameTimer / 60)}:{gameTimer % 60 < 10 ? '0' : ''}{gameTimer % 60}
           </p>
         </div>
@@ -510,8 +385,8 @@ export default function BingoCard() {
           recentDraws.map((num, idx) => (
             <div
               key={idx}
-              className={`w-12 h-12 border-2 border-coinbase-blue flex items-center justify-center text-lg font-bold rounded transition-opacity duration-500
-                ${idx === recentDraws.length - 1 ? 'bg-coinbase-blue text-white animate-bounce' : 'opacity-60'}`}
+              className={`w-12 h-12 border-2 border-coinbase-blue flex items-center justify-center text-lg font-bold rounded transition-all duration-500
+                ${idx === recentDraws.length - 1 ? 'bg-coinbase-blue text-white animate-bounce' : 'bg-white text-coinbase-blue opacity-60'}`}
             >
               {num}
             </div>
@@ -533,6 +408,8 @@ export default function BingoCard() {
             const num = card[col]?.[row] ?? '';
             const pos = `${col}${row}`;
             const isMarked = marked.has(pos) || (num === 'FREE' && pos === '22');
+            const isDrawn = typeof num === 'number' && recentDraws.includes(num);
+            
             return (
               <button
                 key={pos}
@@ -540,7 +417,7 @@ export default function BingoCard() {
                 className={`w-full aspect-square border-2 border-coinbase-blue flex items-center justify-center text-sm font-bold rounded transition-all duration-200
                   ${isMarked ? 'bg-coinbase-blue text-white shadow-lg' : 'bg-white text-coinbase-blue hover:bg-blue-100'}
                   ${num === 'FREE' ? 'text-xs' : ''}
-                  ${typeof num === 'number' && recentDraws.includes(num) && !isMarked ? 'animate-pulse border-green-500' : ''}`}
+                  ${isDrawn && !isMarked ? 'animate-pulse border-green-500 border-4' : ''}`}
                 disabled={isMarked || (typeof num !== 'number' && num !== 'FREE')}
               >
                 {num === 'FREE' ? (
@@ -557,7 +434,7 @@ export default function BingoCard() {
       {/* Game Controls */}
       <div className="flex justify-center gap-4 mb-4">
         <button 
-          onClick={startGame} 
+          onClick={startGame}
           disabled={!unlimitedToday && dailyPlays >= MAX_FREE_PLAYS}
           className="bg-coinbase-blue text-white px-6 py-2 rounded-lg font-bold hover:bg-blue-600 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors"
         >
@@ -565,16 +442,7 @@ export default function BingoCard() {
         </button>
       </div>
 
-      {/* Connect wallet notice for non-connected users */}
-      {!address && winInfo.types.length === 0 && (
-        <div className="mb-4 p-3 bg-blue-50 rounded-lg">
-          <p className="text-blue-700 text-sm text-center">
-            Connect your wallet to receive automatic $BINGO rewards when you win!
-          </p>
-        </div>
-      )}
-
-      {/* Win Status with Automatic Rewards - Game Continues */}
+      {/* Win Status */}
       {winInfo.types.length > 0 && (
         <div className="mb-4 p-4 bg-gradient-to-r from-green-400 to-blue-500 text-white rounded-lg shadow-lg">
           <p className="text-2xl font-bold animate-pulse mb-2">
@@ -582,62 +450,21 @@ export default function BingoCard() {
           </p>
           <p className="text-sm opacity-90 mb-2">({winInfo.count} total wins)</p>
           
-          {timerActive && (
-            <p className="text-xs opacity-80 mb-3 bg-white/20 rounded px-2 py-1">
-              🎮 Game continues! Keep playing for more wins!
-            </p>
-          )}
-          
-          <div className="text-center space-y-4">
-            {/* Auto-reward status message */}
-            <div className="bg-white/20 rounded-lg p-4">
-              <div className="text-lg font-bold mb-2">
-                ✨ Rewards Sent Automatically! ✨
-              </div>
-              <div className="text-sm opacity-90">
-                🎯 {1000 * winInfo.types.length} $BINGO tokens sent to your wallet
-              </div>
-              <div className="text-xs opacity-75 mt-2">
-                No claiming needed - rewards are instant!
-              </div>
+          <div className="bg-white/20 rounded-lg p-3">
+            <div className="text-lg font-bold mb-1">
+              ✨ Rewards Sent Automatically! ✨
             </div>
-
-            {/* Wallet connection status */}
-            {!address && (
-              <div className="bg-yellow-500/20 rounded-lg p-3">
-                <div className="text-sm font-bold mb-1">
-                  🔗 Connect Wallet for Automatic Rewards
-                </div>
-                <div className="text-xs opacity-80">
-                  Win detected, but wallet needed to receive tokens
-                </div>
-              </div>
-            )}
-
-            {/* Share encouragement */}
-            <div className="bg-white/10 rounded-lg p-3">
-              <div className="text-sm font-bold mb-1">
-                📣 Share Your Win!
-              </div>
-              <div className="text-xs opacity-80">
-                Tell everyone about your {winInfo.types.join(' + ')} success!
-              </div>
+            <div className="text-sm opacity-90">
+              🎯 {1000 * winInfo.types.length} $BINGO tokens awarded
+            </div>
+            <div className="text-xs opacity-75 mt-1">
+              No claiming needed - instant rewards!
             </div>
           </div>
           
-          {!address && (
-            <p className="text-xs opacity-75 mt-2">Connect wallet below to receive automatic rewards</p>
-          )}
-          
-          {address && timerActive && (
-            <p className="text-xs opacity-75 mt-2">
-              💡 Tip: Keep playing for more automatic rewards!
-            </p>
-          )}
-          
-          {address && (
-            <p className="text-xs opacity-75 mt-1">
-              ⚡ Rewards sent automatically - no gas fees for you!
+          {timerActive && (
+            <p className="text-xs opacity-80 mt-2">
+              🎮 Game continues! Keep playing for more wins!
             </p>
           )}
         </div>
@@ -646,7 +473,9 @@ export default function BingoCard() {
       {/* Daily Limit Upsells */}
       {(!unlimitedToday && dailyPlays >= MAX_FREE_PLAYS) && (
         <div className="mb-4 p-4 bg-blue-100 rounded-lg shadow-md">
-          <p className="text-coinbase-blue mb-3 font-semibold">🎯 Free plays used up today! Get more:</p>
+          <p className="text-coinbase-blue mb-3 font-semibold">
+            🎯 Free plays used up today! Get more:
+          </p>
           <div className="space-y-2">
             <button 
               onClick={shareForExtraPlay}
@@ -664,35 +493,13 @@ export default function BingoCard() {
               }`}
             >
               {isProcessingPayment ? '⏳ Processing...' : 
-               !address ? '🔗 Connect Wallet for Unlimited' :
+               !address ? '🔗 Connect Wallet First' :
                '💰 Pay 50 $BINGO (Unlimited Today)'}
             </button>
           </div>
           {process.env.NEXT_PUBLIC_CDP_RPC && (
             <p className="text-xs text-green-600 mt-2">⚡ Gasless transactions enabled</p>
           )}
-        </div>
-      )}
-
-      {/* Wallet Connection Status - Moved to Bottom */}
-      {!address ? (
-        <div className="mt-4 p-3 bg-gray-100 rounded-lg">
-          <button className="w-full bg-coinbase-blue text-white px-6 py-2 rounded-lg font-bold hover:bg-blue-600 mb-2">
-            Connect Wallet
-          </button>
-          <p className="text-xs text-gray-600 text-center">
-            Connect to claim $BINGO rewards when you win
-          </p>
-        </div>
-      ) : (
-        <div className="mt-4 p-2 bg-gray-50 rounded-lg">
-          <p className="text-sm text-coinbase-blue text-center">
-            Connected: {address.slice(0, 6)}...{address.slice(-4)}
-            {process.env.NEXT_PUBLIC_CDP_RPC && <span className="ml-2 text-green-600">⚡ Gasless</span>}
-          </p>
-          <p className="text-xs text-gray-500 text-center mt-1">
-            Ready to claim rewards • Make sure you have ETH for gas
-          </p>
         </div>
       )}
     </div>
