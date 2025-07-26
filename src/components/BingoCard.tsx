@@ -335,35 +335,48 @@ export default function BingoCard() {
 
   // Simplified win claiming for mobile wallet compatibility
   const claimWin = useCallback(async () => {
+    console.log('🎯 CLAIM DEBUG: Function called', { address, winTypes: winInfo.types, isClaimingWin });
+    
     // Debug info via alert for mobile
     if (!address) {
       alert('❌ DEBUG: No wallet connected\nPlease connect your wallet first!');
+      console.log('🎯 CLAIM DEBUG: No address, returning');
       return;
     }
     
     if (winInfo.types.length === 0) {
       alert('❌ DEBUG: No wins available\nPlay the game and get BINGO first!');
+      console.log('🎯 CLAIM DEBUG: No wins, returning');
       return;
     }
 
     if (isClaimingWin) {
       alert('❌ DEBUG: Already claiming\nPlease wait for current claim to finish!');
+      console.log('🎯 CLAIM DEBUG: Already claiming, returning');
       return;
     }
+
+    console.log('🎯 CLAIM DEBUG: All checks passed, showing confirmation');
 
     // Simple confirmation without complex formatting
     const userConfirmed = window.confirm(
       `Claim ${winInfo.types.join(' + ')} for 1000 $BINGO tokens?\n\nThis requires gas fees. Continue?`
     );
 
+    console.log('🎯 CLAIM DEBUG: User confirmation:', userConfirmed);
+
     if (!userConfirmed) {
+      console.log('🎯 CLAIM DEBUG: User cancelled, returning');
       return;
     }
 
+    console.log('🎯 CLAIM DEBUG: Setting isClaimingWin to true');
     setIsClaimingWin(true);
     
     try {
+      console.log('🎯 CLAIM DEBUG: Starting try block');
       alert('🔄 DEBUG: Starting claim process...');
+      console.log('🎯 CLAIM DEBUG: Showed start alert');
       
       await trackEvent('manual_win_claim_started', {
         winTypes: winInfo.types,
@@ -371,29 +384,45 @@ export default function BingoCard() {
         gameActive: timerActive,
         timeRemaining: gameTimer,
       });
+      console.log('🎯 CLAIM DEBUG: Tracked start event');
 
+      console.log('🎯 CLAIM DEBUG: About to call getWinSignature');
       const { hash, signature } = await getWinSignature(address, winInfo.types);
+      console.log('🎯 CLAIM DEBUG: Got win signature', { hash: hash?.slice(0, 10), signature: signature?.slice(0, 10) });
       
       alert('🔄 DEBUG: Got signature, sending transaction...');
+      console.log('🎯 CLAIM DEBUG: Showed signature alert');
+      
+      console.log('🎯 CLAIM DEBUG: About to call writeContract', { 
+        address: GAME_ADDRESS, 
+        functionName: 'claimWin',
+        args: [hash, signature]
+      });
       
       // Simplified transaction - try writeContract first for mobile compatibility
-      await writeContract({
+      const result = await writeContract({
         address: GAME_ADDRESS,
         abi: bingoGameABI as any,
         functionName: 'claimWin',
         args: [hash, signature],
       });
       
+      console.log('🎯 CLAIM DEBUG: writeContract result:', result);
+      
       await trackEvent('manual_win_claim_success', {
         winTypes: winInfo.types,
         hash: hash.slice(0, 10),
         gameActive: timerActive,
       });
+      console.log('🎯 CLAIM DEBUG: Tracked success event');
       
       alert('✅ SUCCESS: Claim submitted! Tokens should arrive shortly!');
+      console.log('🎯 CLAIM DEBUG: Showed success alert');
 
     } catch (error) {
+      console.log('🎯 CLAIM DEBUG: Caught error:', error);
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      console.log('🎯 CLAIM DEBUG: Error message:', errorMessage);
       
       let userMessage = 'Claim failed: ';
       
@@ -408,6 +437,7 @@ export default function BingoCard() {
       }
       
       alert(`❌ ERROR: ${userMessage}`);
+      console.log('🎯 CLAIM DEBUG: Showed error alert');
       
       await trackEvent('error_occurred', {
         type: 'manual_win_claim_failed',
@@ -415,7 +445,9 @@ export default function BingoCard() {
         error: errorMessage,
         gameActive: timerActive,
       });
+      console.log('🎯 CLAIM DEBUG: Tracked error event');
     } finally {
+      console.log('🎯 CLAIM DEBUG: In finally block, setting isClaimingWin to false');
       setIsClaimingWin(false);
     }
   }, [address, winInfo, isClaimingWin, trackEvent, getWinSignature, writeContract, timerActive, gameTimer]);
