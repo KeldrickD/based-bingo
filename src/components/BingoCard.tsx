@@ -335,13 +335,9 @@ export default function BingoCard() {
       console.log(`🎉 New win detected: ${newWin.types.join(' + ')}`);
       alert(`🎯 ${newWin.types.join(' + ')}! Claiming 1000 $BINGO automatically! Share: ${shareUrl}`);
 
-      // Auto-share on Farcaster
-      if (sdk.actions?.cast) {
-        sdk.actions.cast({
-          text: `Just got ${newWin.types.join(' + ')} in Based Bingo! Won 1000 $BINGO—play now!`,
-          embeds: [{ url: shareUrl }],
-        }).catch((error: unknown) => console.error('❌ Cast failed:', error));
-      }
+      // Auto-share on Farcaster (disabled for build compatibility)
+      // Note: Farcaster SDK casting will be re-enabled when types are available
+      console.log(`🎉 Win detected: ${newWin.types.join(' + ')} - Share URL: ${shareUrl}`);
 
       // Enhanced automatic win claiming
       const claimWinAutomatically = async () => {
@@ -420,18 +416,13 @@ export default function BingoCard() {
 
   const shareForExtraPlay = useCallback(async () => {
     try {
-      if (sdk.actions?.cast) {
-        await sdk.actions.cast({
-          text: 'Loving Based Bingo—join the fun! 🎯 https://basedbingo.xyz',
-          embeds: [{ url: 'https://basedbingo.xyz' }],
-        });
-      }
-      
+      console.log('📢 Share requested for extra play');
+      // Note: Farcaster sharing temporarily disabled for build compatibility
       setDailyPlays(0);
       localStorage.setItem('dailyPlays', '0');
       
       await trackEvent('extra_play_shared', { previousPlays: dailyPlays });
-      alert('🎉 Shared! You get +1 play today.');
+      alert('🎉 Extra play granted! (Auto-share coming soon)');
       
     } catch (error) {
       console.error('❌ Share failed:', error);
