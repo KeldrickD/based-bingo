@@ -660,9 +660,18 @@ export default function BingoCard() {
           disabled={!unlimitedToday && dailyPlays >= MAX_FREE_PLAYS}
           className="bg-coinbase-blue text-white px-6 py-2 rounded-lg font-bold hover:bg-blue-600 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors"
         >
-          🎮 New Game - FREE! ({unlimitedToday ? 'Unlimited' : `${MAX_FREE_PLAYS - dailyPlays} left`})
+          🎮 New Game ({unlimitedToday ? 'Unlimited' : `${MAX_FREE_PLAYS - dailyPlays} left`})
         </button>
       </div>
+
+      {/* Connect wallet notice for non-connected users */}
+      {!address && winInfo.types.length === 0 && (
+        <div className="mb-4 p-3 bg-blue-50 rounded-lg">
+          <p className="text-blue-700 text-sm text-center">
+            Connect your wallet to claim $BINGO rewards when you win!
+          </p>
+        </div>
+      )}
 
       {/* Free to Play Notice */}
       {!address && (
@@ -761,10 +770,10 @@ export default function BingoCard() {
       {!address ? (
         <div className="mt-4 p-3 bg-gray-100 rounded-lg">
           <button className="w-full bg-coinbase-blue text-white px-6 py-2 rounded-lg font-bold hover:bg-blue-600 mb-2">
-            Connect Wallet (Optional)
+            Connect Wallet
           </button>
           <p className="text-xs text-gray-600 text-center">
-            🎮 Game is free to play • Connect wallet to claim $BINGO rewards
+            Connect to claim $BINGO rewards when you win
           </p>
         </div>
       ) : (
