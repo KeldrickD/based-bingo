@@ -667,26 +667,32 @@ export default function BingoCard() {
           )}
           
           <button
+            onTouchStart={(e) => {
+              e.preventDefault();
+              if (!isClaimingWin && address && winInfo.types.length > 0) {
+                claimWin();
+              }
+            }}
             onClick={(e) => {
               e.preventDefault();
               e.stopPropagation();
               if (!isClaimingWin && address && winInfo.types.length > 0) {
                 claimWin();
               } else {
-                alert(`❌ Button disabled: ${!address ? 'No wallet' : isClaimingWin ? 'Already claiming' : 'No wins'}`);
+                alert(`❌ Button blocked: ${!address ? 'No wallet' : isClaimingWin ? 'Already claiming' : 'No wins'}`);
               }
             }}
-            disabled={false}
-            className={`w-full px-6 py-3 rounded-lg font-bold text-lg transition-all duration-200 ${
-              isClaimingWin
-                ? 'bg-gray-400 text-gray-600'
-                : !address
-                ? 'bg-gray-300 text-gray-600'
-                : 'bg-white text-orange-500 hover:bg-gray-100 shadow-md hover:shadow-lg'
-            }`}
+            className="w-full px-6 py-3 bg-white text-orange-500 rounded-lg font-bold text-lg border-2 border-orange-500"
             style={{ 
-              pointerEvents: 'auto',
-              touchAction: 'manipulation'
+              WebkitTapHighlightColor: 'transparent',
+              WebkitUserSelect: 'none',
+              userSelect: 'none',
+              outline: 'none',
+              cursor: 'pointer',
+              minHeight: '60px',
+              display: 'block',
+              position: 'relative',
+              zIndex: 10
             }}
           >
             {isClaimingWin ? (
@@ -697,6 +703,25 @@ export default function BingoCard() {
               '🎯 CLAIM 1000 $BINGO TOKENS!'
             )}
           </button>
+          
+          {/* Fallback tap area for mobile */}
+          <div 
+            onClick={() => {
+              if (!isClaimingWin && address && winInfo.types.length > 0) {
+                claimWin();
+              } else {
+                alert('Fallback button clicked! Something is blocking the main button.');
+              }
+            }}
+            className="mt-2 p-2 bg-red-500 text-white text-center rounded cursor-pointer"
+            style={{ 
+              minHeight: '40px',
+              WebkitTapHighlightColor: 'transparent',
+              zIndex: 15
+            }}
+          >
+            🚨 BACKUP CLAIM BUTTON (If main button doesn&apos;t work)
+          </div>
           
           {!address && (
             <p className="text-xs opacity-75 mt-2">Connect wallet below to claim your rewards</p>
