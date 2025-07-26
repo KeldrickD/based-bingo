@@ -333,14 +333,33 @@ export default function BingoCard() {
     }
   }, [card, recentDraws]);
 
-  // Enhanced win claiming with better error handling
+  // Enhanced win claiming with better error handling and debugging
   const claimWin = useCallback(async () => {
+    console.log('🎯 Claim button clicked!', { 
+      address, 
+      winTypes: winInfo.types, 
+      isClaimingWin,
+      winCount: winInfo.count 
+    });
+
     if (!address) {
+      console.log('❌ No wallet connected');
       alert('Please connect your wallet to claim $BINGO rewards!');
       return;
     }
     
-    if (winInfo.types.length === 0 || isClaimingWin) return;
+    if (winInfo.types.length === 0) {
+      console.log('❌ No wins to claim');
+      alert('No wins to claim! Play the game to get BINGO first.');
+      return;
+    }
+
+    if (isClaimingWin) {
+      console.log('❌ Already claiming');
+      return;
+    }
+
+    console.log('✅ All checks passed, showing confirmation dialog');
 
     // Check if user might have insufficient funds
     const userConfirmed = window.confirm(
@@ -350,8 +369,12 @@ export default function BingoCard() {
       `Continue with claim?`
     );
 
-    if (!userConfirmed) return;
+    if (!userConfirmed) {
+      console.log('❌ User cancelled confirmation dialog');
+      return;
+    }
 
+    console.log('✅ User confirmed, starting claim process');
     setIsClaimingWin(true);
     const claimStartTime = Date.now();
 
@@ -366,7 +389,9 @@ export default function BingoCard() {
         timeRemaining: gameTimer,
       });
 
+      console.log('🔐 Getting win signature...');
       const { hash, signature, winData } = await getWinSignature(address, winInfo.types);
+      console.log(`✅ Got signature - hash: ${hash.slice(0, 10)}...`);
       
       console.log(`🔐 Claiming win with hash: ${hash.slice(0, 10)}... (game still active)`);
       
@@ -384,15 +409,17 @@ export default function BingoCard() {
             paymasterService: { url: process.env.NEXT_PUBLIC_CDP_RPC },
           },
         });
+        console.log('✅ Gasless claim transaction sent');
       } else {
         // Fallback to regular transaction
         console.log('⛽ Using regular transaction with gas...');
-        await writeContract({
+        const result = await writeContract({
           address: GAME_ADDRESS,
           abi: bingoGameABI as any,
           functionName: 'claimWin',
           args: [hash, signature],
         });
+        console.log('✅ Regular claim transaction sent:', result);
       }
       
       await trackEvent('manual_win_claim_success', {
@@ -415,6 +442,7 @@ export default function BingoCard() {
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
       console.error('❌ Manual claim failed:', error);
+      console.error('❌ Full error object:', error);
       
       // Better error messaging
       let userFriendlyMessage = 'Claim failed. ';
@@ -430,6 +458,8 @@ export default function BingoCard() {
       } else if (errorMessage.toLowerCase().includes('rejected') ||
                  errorMessage.toLowerCase().includes('denied')) {
         userFriendlyMessage += 'Transaction was cancelled.\n\nYou can try claiming again anytime!';
+      } else if (errorMessage.toLowerCase().includes('user rejected')) {
+        userFriendlyMessage += 'Transaction was rejected by user.\n\nYou can try claiming again anytime!';
       } else {
         userFriendlyMessage += `${errorMessage}\n\nGame continues - you can try claiming again!`;
       }
@@ -444,6 +474,7 @@ export default function BingoCard() {
       
       alert(userFriendlyMessage);
     } finally {
+      console.log('🏁 Claim process finished, resetting claiming state');
       setIsClaimingWin(false);
     }
   }, [address, winInfo, isClaimingWin, trackEvent, getWinSignature, writeContracts, writeContract, timerActive, gameTimer]);
@@ -688,7 +719,10 @@ export default function BingoCard() {
           )}
           
           <button
-            onClick={claimWin}
+            onClick={() => {
+              console.log('🎯 Claim button onClick triggered!');
+              claimWin();
+            }}
             disabled={isClaimingWin || !address}
             className={`w-full px-6 py-3 rounded-lg font-bold text-lg transition-all duration-200 ${
               isClaimingWin
