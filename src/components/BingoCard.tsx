@@ -273,7 +273,7 @@ export default function BingoCard() {
     setAutoDrawInterval(interval);
   }, [stopAutoDraw, trackEvent, winInfo]);
 
-  // Enhanced game start with analytics
+  // Enhanced game start with analytics (removed entry fee for better onboarding)
   const startGame = useCallback(async () => {
     if (!unlimitedToday && dailyPlays >= MAX_FREE_PLAYS) {
       alert('Daily free plays used up! Share on Farcaster for +1 play or buy unlimited access.');
@@ -291,52 +291,39 @@ export default function BingoCard() {
     setTimerActive(true);
     startAutoDraw();
 
-    // Handle entry fee with gasless support
+    // Remove entry fee for better user onboarding - game is now free to play
     if (!unlimitedToday && address) {
       try {
-        if (process.env.NEXT_PUBLIC_CDP_RPC && writeContracts) {
-          // Try gasless transaction (Note: entry fee handled separately for gasless)
-          writeContracts({
-            contracts: [{
-              address: GAME_ADDRESS,
-              abi: bingoGameABI as any,
-              functionName: 'join',
-              args: [],
-            }],
-            capabilities: {
-              paymasterService: { url: process.env.NEXT_PUBLIC_CDP_RPC },
-            },
-          });
-          console.log('⚡ Using gasless transaction');
-        } else {
-          // Fallback to regular transaction with entry fee
-          writeContract({
-            address: GAME_ADDRESS,
-            abi: bingoGameABI as any,
-            functionName: 'join',
-            args: [],
-            value: BigInt(Math.floor(0.0005 * Math.pow(10, 18))),
-          });
-          console.log('⛽ Using regular transaction');
-        }
+        console.log('🎮 Game started successfully - no entry fee required!');
         
         // Update plays count
         const newPlays = dailyPlays + 1;
         setDailyPlays(newPlays);
         localStorage.setItem('dailyPlays', newPlays.toString());
         
-        console.log('✅ Game started successfully');
+        await trackEvent('game_joined_successfully', {
+          unlimited: unlimitedToday,
+          totalPlays: newPlays,
+          freeToPlay: true,
+        });
+        
       } catch (error) {
-        console.error('❌ Join failed:', error);
+        console.error('❌ Game start failed:', error);
         await trackEvent('error_occurred', {
-          type: 'game_join_failed',
+          type: 'game_start_failed',
           error: error instanceof Error ? error.message : 'Unknown error',
           unlimited: unlimitedToday,
         });
-        alert('Failed to join game: ' + (error instanceof Error ? error.message : 'Check network or paymaster'));
+        alert('Failed to start game: ' + (error instanceof Error ? error.message : 'Please try again'));
       }
+    } else if (!address) {
+      // Game can be played without wallet connection for demo purposes
+      const newPlays = dailyPlays + 1;
+      setDailyPlays(newPlays);
+      localStorage.setItem('dailyPlays', newPlays.toString());
+      console.log('🎮 Demo game started - connect wallet to claim rewards!');
     }
-  }, [unlimitedToday, dailyPlays, address, writeContracts, writeContract, trackEvent, resetGame, startAutoDraw]);
+  }, [unlimitedToday, dailyPlays, address, trackEvent, resetGame, startAutoDraw]);
 
   const markCell = useCallback((row: number, col: number) => {
     const num = card[col]?.[row] ?? '';
@@ -346,9 +333,24 @@ export default function BingoCard() {
     }
   }, [card, recentDraws]);
 
-  // Manual win claiming function (doesn't interrupt game)
+  // Enhanced win claiming with better error handling
   const claimWin = useCallback(async () => {
-    if (!address || winInfo.types.length === 0 || isClaimingWin) return;
+    if (!address) {
+      alert('Please connect your wallet to claim $BINGO rewards!');
+      return;
+    }
+    
+    if (winInfo.types.length === 0 || isClaimingWin) return;
+
+    // Check if user might have insufficient funds
+    const userConfirmed = window.confirm(
+      `🎯 Claim ${winInfo.types.join(' + ')} for 1000 $BINGO tokens?\n\n` +
+      `Note: This requires a small gas fee on Base network.\n` +
+      `Make sure you have some ETH for gas fees.\n\n` +
+      `Continue with claim?`
+    );
+
+    if (!userConfirmed) return;
 
     setIsClaimingWin(true);
     const claimStartTime = Date.now();
@@ -369,8 +371,9 @@ export default function BingoCard() {
       console.log(`🔐 Claiming win with hash: ${hash.slice(0, 10)}... (game still active)`);
       
       if (process.env.NEXT_PUBLIC_CDP_RPC && writeContracts) {
-        // Try gasless claim
-        writeContracts({
+        // Try gasless claim first
+        console.log('⚡ Attempting gasless claim...');
+        await writeContracts({
           contracts: [{
             address: GAME_ADDRESS,
             abi: bingoGameABI as any,
@@ -383,7 +386,8 @@ export default function BingoCard() {
         });
       } else {
         // Fallback to regular transaction
-        writeContract({
+        console.log('⛽ Using regular transaction with gas...');
+        await writeContract({
           address: GAME_ADDRESS,
           abi: bingoGameABI as any,
           functionName: 'claimWin',
@@ -403,14 +407,32 @@ export default function BingoCard() {
       
       // Non-blocking success message
       if (timerActive) {
-        alert('🎉 1000 $BINGO claimed! Game continues - keep playing for more wins!');
+        alert('🎉 1000 $BINGO claim submitted! Game continues - keep playing for more wins!\n\nTransaction processing... Tokens should arrive shortly!');
       } else {
-        alert('🎉 1000 $BINGO claimed successfully!');
+        alert('🎉 1000 $BINGO claim submitted successfully!\n\nTransaction processing... Tokens should arrive shortly!');
       }
 
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
       console.error('❌ Manual claim failed:', error);
+      
+      // Better error messaging
+      let userFriendlyMessage = 'Claim failed. ';
+      
+      if (errorMessage.toLowerCase().includes('insufficient funds') || 
+          errorMessage.toLowerCase().includes('not enough') ||
+          errorMessage.toLowerCase().includes('balance')) {
+        userFriendlyMessage += 'You need some ETH on Base network for gas fees.\n\n' +
+                              'Solutions:\n' +
+                              '• Bridge ETH to Base network\n' +
+                              '• Get ETH from Base faucets\n' +
+                              '• Try again when you have gas funds';
+      } else if (errorMessage.toLowerCase().includes('rejected') ||
+                 errorMessage.toLowerCase().includes('denied')) {
+        userFriendlyMessage += 'Transaction was cancelled.\n\nYou can try claiming again anytime!';
+      } else {
+        userFriendlyMessage += `${errorMessage}\n\nGame continues - you can try claiming again!`;
+      }
       
       await trackEvent('error_occurred', {
         type: 'manual_win_claim_failed',
@@ -420,7 +442,7 @@ export default function BingoCard() {
         gameActive: timerActive,
       });
       
-      alert(`Claim failed: ${errorMessage}\nGame continues - you can try claiming again!`);
+      alert(userFriendlyMessage);
     } finally {
       setIsClaimingWin(false);
     }
@@ -638,9 +660,19 @@ export default function BingoCard() {
           disabled={!unlimitedToday && dailyPlays >= MAX_FREE_PLAYS}
           className="bg-coinbase-blue text-white px-6 py-2 rounded-lg font-bold hover:bg-blue-600 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors"
         >
-          🎮 New Game ({unlimitedToday ? 'Unlimited' : `${MAX_FREE_PLAYS - dailyPlays} left`})
+          🎮 New Game - FREE! ({unlimitedToday ? 'Unlimited' : `${MAX_FREE_PLAYS - dailyPlays} left`})
         </button>
       </div>
+
+      {/* Free to Play Notice */}
+      {!address && (
+        <div className="mb-4 p-3 bg-green-100 rounded-lg">
+          <p className="text-green-700 text-sm font-semibold mb-1">🎮 Free to Play!</p>
+          <p className="text-green-600 text-xs">
+            Game is completely free! Connect wallet only to claim $BINGO rewards.
+          </p>
+        </div>
+      )}
 
       {/* Win Status with Clickable Claim Button - Game Continues */}
       {winInfo.types.length > 0 && (
@@ -662,23 +694,33 @@ export default function BingoCard() {
             className={`w-full px-6 py-3 rounded-lg font-bold text-lg transition-all duration-200 ${
               isClaimingWin
                 ? 'bg-gray-400 text-gray-600 cursor-not-allowed'
+                : !address
+                ? 'bg-gray-300 text-gray-600 cursor-not-allowed'
                 : 'bg-white text-orange-500 hover:bg-gray-100 shadow-md hover:shadow-lg'
             }`}
           >
             {isClaimingWin ? (
               '⏳ Claiming 1000 $BINGO...'
+            ) : !address ? (
+              '🔗 Connect Wallet to Claim'
             ) : (
               '🎯 CLAIM 1000 $BINGO TOKENS!'
             )}
           </button>
           
           {!address && (
-            <p className="text-xs opacity-75 mt-2">Connect wallet to claim rewards</p>
+            <p className="text-xs opacity-75 mt-2">Connect wallet below to claim your rewards</p>
           )}
           
-          {timerActive && (
+          {address && timerActive && (
             <p className="text-xs opacity-75 mt-2">
               💡 Tip: You can claim now or wait for more wins!
+            </p>
+          )}
+          
+          {address && (
+            <p className="text-xs opacity-75 mt-1">
+              ⚡ Small gas fee required on Base network
             </p>
           )}
         </div>
@@ -697,14 +739,16 @@ export default function BingoCard() {
             </button>
             <button 
               onClick={payForUnlimited}
-              disabled={isProcessingPayment}
+              disabled={isProcessingPayment || !address}
               className={`w-full px-4 py-2 rounded-lg font-bold transition-colors ${
-                isProcessingPayment
+                isProcessingPayment || !address
                   ? 'bg-gray-400 text-gray-600 cursor-not-allowed'
                   : 'bg-green-500 text-white hover:bg-green-600'
               }`}
             >
-              {isProcessingPayment ? '⏳ Processing...' : '💰 Pay 50 $BINGO (Unlimited Today)'}
+              {isProcessingPayment ? '⏳ Processing...' : 
+               !address ? '🔗 Connect Wallet for Unlimited' :
+               '💰 Pay 50 $BINGO (Unlimited Today)'}
             </button>
           </div>
           {process.env.NEXT_PUBLIC_CDP_RPC && (
@@ -716,15 +760,21 @@ export default function BingoCard() {
       {/* Wallet Connection Status - Moved to Bottom */}
       {!address ? (
         <div className="mt-4 p-3 bg-gray-100 rounded-lg">
-          <button className="w-full bg-coinbase-blue text-white px-6 py-2 rounded-lg font-bold hover:bg-blue-600">
-            Connect Wallet (for $BINGO)
+          <button className="w-full bg-coinbase-blue text-white px-6 py-2 rounded-lg font-bold hover:bg-blue-600 mb-2">
+            Connect Wallet (Optional)
           </button>
+          <p className="text-xs text-gray-600 text-center">
+            🎮 Game is free to play • Connect wallet to claim $BINGO rewards
+          </p>
         </div>
       ) : (
         <div className="mt-4 p-2 bg-gray-50 rounded-lg">
-          <p className="text-sm text-coinbase-blue">
+          <p className="text-sm text-coinbase-blue text-center">
             Connected: {address.slice(0, 6)}...{address.slice(-4)}
             {process.env.NEXT_PUBLIC_CDP_RPC && <span className="ml-2 text-green-600">⚡ Gasless</span>}
+          </p>
+          <p className="text-xs text-gray-500 text-center mt-1">
+            Ready to claim rewards • Make sure you have ETH for gas
           </p>
         </div>
       )}
