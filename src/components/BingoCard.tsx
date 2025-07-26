@@ -673,16 +673,6 @@ export default function BingoCard() {
         </div>
       )}
 
-      {/* Free to Play Notice */}
-      {!address && (
-        <div className="mb-4 p-3 bg-green-100 rounded-lg">
-          <p className="text-green-700 text-sm font-semibold mb-1">🎮 Free to Play!</p>
-          <p className="text-green-600 text-xs">
-            Game is completely free! Connect wallet only to claim $BINGO rewards.
-          </p>
-        </div>
-      )}
-
       {/* Win Status with Clickable Claim Button - Game Continues */}
       {winInfo.types.length > 0 && (
         <div className="mb-4 p-4 bg-gradient-to-r from-yellow-400 to-orange-500 text-white rounded-lg shadow-lg">
