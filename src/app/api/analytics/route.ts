@@ -49,7 +49,7 @@ function updateAnalytics(event: AnalyticsEvent) {
     
     case 'win_detected':
       gameAnalytics.totalWins++;
-      if (event.data?.winTypes) {
+      if (event.data?.winTypes && Array.isArray(event.data.winTypes)) {
         event.data.winTypes.forEach((winType: string) => {
           gameAnalytics.popularWinTypes[winType] = (gameAnalytics.popularWinTypes[winType] || 0) + 1;
         });

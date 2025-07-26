@@ -46,7 +46,7 @@ function checkWin(marked: Set<string>): { count: number; types: string[] } {
   );
   
   const count = completed.length;
-  let types: string[] = [];
+  const types: string[] = [];
   
   if (count >= 1) types.push('Line Bingo!');
   if (count >= 2) types.push('Double Line!');
@@ -63,7 +63,6 @@ export default function BingoCard() {
   // Game state
   const [card, setCard] = useState<(number | string)[][]>([]);
   const [marked, setMarked] = useState<Set<string>>(new Set(['22']));
-  const [currentNumber, setCurrentNumber] = useState<number | null>(null);
   const [drawnNumbers, setDrawnNumbers] = useState<Set<number>>(new Set());
   const [recentDraws, setRecentDraws] = useState<number[]>([]);
   const [winInfo, setWinInfo] = useState<{ count: number; types: string[] }>({ count: 0, types: [] });
@@ -74,7 +73,6 @@ export default function BingoCard() {
   
   // Daily limits state
   const [dailyPlays, setDailyPlays] = useState(0);
-  const [lastPlayDate, setLastPlayDate] = useState('');
   const [unlimitedToday, setUnlimitedToday] = useState(false);
   const [isProcessingPayment, setIsProcessingPayment] = useState(false);
   const MAX_FREE_PLAYS = 3;
@@ -182,15 +180,20 @@ export default function BingoCard() {
       localStorage.setItem('lastPlayDate', today);
       localStorage.setItem('dailyPlays', '0');
       localStorage.removeItem('unlimitedDate');
-      setLastPlayDate(today);
       setDailyPlays(0);
       setUnlimitedToday(false);
     } else {
-      setLastPlayDate(storedDate || '');
       setDailyPlays(storedPlays);
       setUnlimitedToday(storedUnlimited);
     }
   }, []);
+
+  const stopAutoDraw = useCallback(() => {
+    if (autoDrawInterval) {
+      clearInterval(autoDrawInterval);
+      setAutoDrawInterval(null);
+    }
+  }, [autoDrawInterval]);
 
   // Game timer management
   useEffect(() => {
@@ -202,7 +205,41 @@ export default function BingoCard() {
       alert('⏰ Time up! Game over.');
       trackEvent('game_completed', { reason: 'timeout', gameTimer: 0 });
     }
-  }, [timerActive, gameTimer, trackEvent]);
+  }, [timerActive, gameTimer, stopAutoDraw, trackEvent]);
+
+  const resetGame = useCallback(() => {
+    const newCard = generateBingoCard();
+    setCard(newCard);
+    setMarked(new Set(['22']));
+    setDrawnNumbers(new Set());
+    setRecentDraws([]);
+    setWinInfo({ count: 0, types: [] });
+    setGameTimer(120);
+    setTimerActive(false);
+    if (autoDrawInterval) clearInterval(autoDrawInterval);
+  }, [autoDrawInterval]);
+
+  const startAutoDraw = useCallback(() => {
+    const interval = setInterval(() => {
+      setDrawnNumbers((prevDrawn) => {
+        if (prevDrawn.size >= 75) {
+          stopAutoDraw();
+          return prevDrawn;
+        }
+        
+        let num: number;
+        do {
+          num = Math.floor(Math.random() * 75) + 1;
+        } while (prevDrawn.has(num));
+        
+        const newDrawn = new Set([...prevDrawn, num]);
+        setRecentDraws((prev) => [...prev, num].slice(-5));
+        
+        return newDrawn;
+      });
+    }, 3000);
+    setAutoDrawInterval(interval);
+  }, [stopAutoDraw]);
 
   // Enhanced game start with analytics
   const startGame = useCallback(async () => {
@@ -230,10 +267,10 @@ export default function BingoCard() {
           writeContracts({
             contracts: [{
               address: GAME_ADDRESS,
-              abi: bingoGameABI,
+              abi: bingoGameABI as any,
               functionName: 'join',
               args: [],
-              value: BigInt(Math.floor(0.0005 * 10**18)), // 0.0005 ETH
+              value: BigInt(Math.floor(0.0005 * Math.pow(10, 18))), // 0.0005 ETH
             }],
             capabilities: {
               paymasterService: { url: process.env.NEXT_PUBLIC_CDP_RPC },
@@ -244,10 +281,10 @@ export default function BingoCard() {
           // Fallback to regular transaction
           writeContract({
             address: GAME_ADDRESS,
-            abi: bingoGameABI,
+            abi: bingoGameABI as any,
             functionName: 'join',
             args: [],
-            value: BigInt(Math.floor(0.0005 * 10**18)),
+            value: BigInt(Math.floor(0.0005 * Math.pow(10, 18))),
           });
           console.log('⛽ Using regular transaction');
         }
@@ -268,53 +305,7 @@ export default function BingoCard() {
         alert('Failed to join game: ' + (error instanceof Error ? error.message : 'Check network or paymaster'));
       }
     }
-  }, [unlimitedToday, dailyPlays, address, writeContracts, writeContract, trackEvent]);
-
-  const resetGame = useCallback(() => {
-    const newCard = generateBingoCard();
-    setCard(newCard);
-    setMarked(new Set(['22']));
-    setCurrentNumber(null);
-    setDrawnNumbers(new Set());
-    setRecentDraws([]);
-    setWinInfo({ count: 0, types: [] });
-    setGameTimer(120);
-    setTimerActive(false);
-    if (autoDrawInterval) clearInterval(autoDrawInterval);
-  }, [autoDrawInterval]);
-
-  const startAutoDraw = useCallback(() => {
-    const interval = setInterval(() => {
-      setDrawnNumbers((prevDrawn) => {
-        setGameTimer((prevTimer) => {
-          if (prevDrawn.size >= 75 || prevTimer <= 0) {
-            stopAutoDraw();
-            return prevTimer;
-          }
-          
-          let num: number;
-          do {
-            num = Math.floor(Math.random() * 75) + 1;
-          } while (prevDrawn.has(num));
-          
-          const newDrawn = new Set([...prevDrawn, num]);
-          setCurrentNumber(num);
-          setRecentDraws((prev) => [...prev, num].slice(-5));
-          
-          return newDrawn;
-        });
-        return prevDrawn;
-      });
-    }, 3000);
-    setAutoDrawInterval(interval);
-  }, []);
-
-  const stopAutoDraw = useCallback(() => {
-    if (autoDrawInterval) {
-      clearInterval(autoDrawInterval);
-      setAutoDrawInterval(null);
-    }
-  }, [autoDrawInterval]);
+  }, [unlimitedToday, dailyPlays, address, writeContracts, writeContract, trackEvent, resetGame, startAutoDraw]);
 
   const markCell = useCallback((row: number, col: number) => {
     const num = card[col]?.[row] ?? '';
@@ -346,10 +337,12 @@ export default function BingoCard() {
       alert(`🎯 ${newWin.types.join(' + ')}! Claiming 1000 $BINGO automatically! Share: ${shareUrl}`);
 
       // Auto-share on Farcaster
-      sdk.actions.cast({
-        text: `Just got ${newWin.types.join(' + ')} in Based Bingo! Won 1000 $BINGO—play now!`,
-        embeds: [{ url: shareUrl }],
-      }).catch((error) => console.error('❌ Cast failed:', error));
+      if (sdk.actions?.cast) {
+        sdk.actions.cast({
+          text: `Just got ${newWin.types.join(' + ')} in Based Bingo! Won 1000 $BINGO—play now!`,
+          embeds: [{ url: shareUrl }],
+        }).catch((error: unknown) => console.error('❌ Cast failed:', error));
+      }
 
       // Enhanced automatic win claiming
       const claimWinAutomatically = async () => {
@@ -376,7 +369,7 @@ export default function BingoCard() {
             writeContracts({
               contracts: [{
                 address: GAME_ADDRESS,
-                abi: bingoGameABI,
+                abi: bingoGameABI as any,
                 functionName: 'claimWin',
                 args: [hash, signature],
               }],
@@ -388,7 +381,7 @@ export default function BingoCard() {
             // Fallback to regular transaction
             writeContract({
               address: GAME_ADDRESS,
-              abi: bingoGameABI,
+              abi: bingoGameABI as any,
               functionName: 'claimWin',
               args: [hash, signature],
             });
@@ -428,10 +421,12 @@ export default function BingoCard() {
 
   const shareForExtraPlay = useCallback(async () => {
     try {
-      await sdk.actions.cast({
-        text: 'Loving Based Bingo—join the fun! 🎯 https://basedbingo.xyz',
-        embeds: [{ url: 'https://basedbingo.xyz' }],
-      });
+      if (sdk.actions?.cast) {
+        await sdk.actions.cast({
+          text: 'Loving Based Bingo—join the fun! 🎯 https://basedbingo.xyz',
+          embeds: [{ url: 'https://basedbingo.xyz' }],
+        });
+      }
       
       setDailyPlays(0);
       localStorage.setItem('dailyPlays', '0');
@@ -470,13 +465,13 @@ export default function BingoCard() {
           contracts: [
             {
               address: TOKEN_ADDRESS,
-              abi: basedBingoABI,
+              abi: basedBingoABI as any,
               functionName: 'approve',
-              args: [GAME_ADDRESS, 50n * 10n**18n],
+              args: [GAME_ADDRESS, BigInt(50 * Math.pow(10, 18))],
             },
             {
               address: GAME_ADDRESS,
-              abi: bingoGameABI,
+              abi: bingoGameABI as any,
               functionName: 'buyUnlimited',
               args: [],
             },
@@ -489,15 +484,15 @@ export default function BingoCard() {
         // Fallback: Sequential transactions
         writeContract({
           address: TOKEN_ADDRESS,
-          abi: basedBingoABI,
+          abi: basedBingoABI as any,
           functionName: 'approve',
-          args: [GAME_ADDRESS, 50n * 10n**18n],
+          args: [GAME_ADDRESS, BigInt(50 * Math.pow(10, 18))],
         });
         
         setTimeout(() => {
           writeContract({
             address: GAME_ADDRESS,
-            abi: bingoGameABI,
+            abi: bingoGameABI as any,
             functionName: 'buyUnlimited',
             args: [],
           });
