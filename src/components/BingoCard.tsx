@@ -333,54 +333,37 @@ export default function BingoCard() {
     }
   }, [card, recentDraws]);
 
-  // Enhanced win claiming with better error handling and debugging
+  // Simplified win claiming for mobile wallet compatibility
   const claimWin = useCallback(async () => {
-    console.log('🎯 Claim button clicked!', { 
-      address, 
-      winTypes: winInfo.types, 
-      isClaimingWin,
-      winCount: winInfo.count 
-    });
-
+    // Debug info via alert for mobile
     if (!address) {
-      console.log('❌ No wallet connected');
-      alert('Please connect your wallet to claim $BINGO rewards!');
+      alert('❌ DEBUG: No wallet connected\nPlease connect your wallet first!');
       return;
     }
     
     if (winInfo.types.length === 0) {
-      console.log('❌ No wins to claim');
-      alert('No wins to claim! Play the game to get BINGO first.');
+      alert('❌ DEBUG: No wins available\nPlay the game and get BINGO first!');
       return;
     }
 
     if (isClaimingWin) {
-      console.log('❌ Already claiming');
+      alert('❌ DEBUG: Already claiming\nPlease wait for current claim to finish!');
       return;
     }
 
-    console.log('✅ All checks passed, showing confirmation dialog');
-
-    // Check if user might have insufficient funds
+    // Simple confirmation without complex formatting
     const userConfirmed = window.confirm(
-      `🎯 Claim ${winInfo.types.join(' + ')} for 1000 $BINGO tokens?\n\n` +
-      `Note: This requires a small gas fee on Base network.\n` +
-      `Make sure you have some ETH for gas fees.\n\n` +
-      `Continue with claim?`
+      `Claim ${winInfo.types.join(' + ')} for 1000 $BINGO tokens?\n\nThis requires gas fees. Continue?`
     );
 
     if (!userConfirmed) {
-      console.log('❌ User cancelled confirmation dialog');
       return;
     }
 
-    console.log('✅ User confirmed, starting claim process');
     setIsClaimingWin(true);
-    const claimStartTime = Date.now();
-
+    
     try {
-      console.log(`🎯 Manual win claim initiated for: ${winInfo.types.join(' + ')}`);
-      console.log(`⚡ Game continues while claiming - timer: ${gameTimer}s remaining`);
+      alert('🔄 DEBUG: Starting claim process...');
       
       await trackEvent('manual_win_claim_started', {
         winTypes: winInfo.types,
@@ -389,95 +372,53 @@ export default function BingoCard() {
         timeRemaining: gameTimer,
       });
 
-      console.log('🔐 Getting win signature...');
-      const { hash, signature, winData } = await getWinSignature(address, winInfo.types);
-      console.log(`✅ Got signature - hash: ${hash.slice(0, 10)}...`);
+      const { hash, signature } = await getWinSignature(address, winInfo.types);
       
-      console.log(`🔐 Claiming win with hash: ${hash.slice(0, 10)}... (game still active)`);
+      alert('🔄 DEBUG: Got signature, sending transaction...');
       
-      if (process.env.NEXT_PUBLIC_CDP_RPC && writeContracts) {
-        // Try gasless claim first
-        console.log('⚡ Attempting gasless claim...');
-        await writeContracts({
-          contracts: [{
-            address: GAME_ADDRESS,
-            abi: bingoGameABI as any,
-            functionName: 'claimWin',
-            args: [hash, signature],
-          }],
-          capabilities: {
-            paymasterService: { url: process.env.NEXT_PUBLIC_CDP_RPC },
-          },
-        });
-        console.log('✅ Gasless claim transaction sent');
-      } else {
-        // Fallback to regular transaction
-        console.log('⛽ Using regular transaction with gas...');
-        const result = await writeContract({
-          address: GAME_ADDRESS,
-          abi: bingoGameABI as any,
-          functionName: 'claimWin',
-          args: [hash, signature],
-        });
-        console.log('✅ Regular claim transaction sent:', result);
-      }
+      // Simplified transaction - try writeContract first for mobile compatibility
+      await writeContract({
+        address: GAME_ADDRESS,
+        abi: bingoGameABI as any,
+        functionName: 'claimWin',
+        args: [hash, signature],
+      });
       
       await trackEvent('manual_win_claim_success', {
         winTypes: winInfo.types,
         hash: hash.slice(0, 10),
-        processingTime: Date.now() - claimStartTime,
-        winData,
         gameActive: timerActive,
       });
       
-      console.log('✅ Manual win claim transaction sent! Game continues...');
-      
-      // Non-blocking success message
-      if (timerActive) {
-        alert('🎉 1000 $BINGO claim submitted! Game continues - keep playing for more wins!\n\nTransaction processing... Tokens should arrive shortly!');
-      } else {
-        alert('🎉 1000 $BINGO claim submitted successfully!\n\nTransaction processing... Tokens should arrive shortly!');
-      }
+      alert('✅ SUCCESS: Claim submitted! Tokens should arrive shortly!');
 
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      console.error('❌ Manual claim failed:', error);
-      console.error('❌ Full error object:', error);
       
-      // Better error messaging
-      let userFriendlyMessage = 'Claim failed. ';
+      let userMessage = 'Claim failed: ';
       
       if (errorMessage.toLowerCase().includes('insufficient funds') || 
-          errorMessage.toLowerCase().includes('not enough') ||
-          errorMessage.toLowerCase().includes('balance')) {
-        userFriendlyMessage += 'You need some ETH on Base network for gas fees.\n\n' +
-                              'Solutions:\n' +
-                              '• Bridge ETH to Base network\n' +
-                              '• Get ETH from Base faucets\n' +
-                              '• Try again when you have gas funds';
+          errorMessage.toLowerCase().includes('not enough')) {
+        userMessage += 'You need ETH for gas fees on Base network.';
       } else if (errorMessage.toLowerCase().includes('rejected') ||
                  errorMessage.toLowerCase().includes('denied')) {
-        userFriendlyMessage += 'Transaction was cancelled.\n\nYou can try claiming again anytime!';
-      } else if (errorMessage.toLowerCase().includes('user rejected')) {
-        userFriendlyMessage += 'Transaction was rejected by user.\n\nYou can try claiming again anytime!';
+        userMessage += 'Transaction was cancelled. You can try again!';
       } else {
-        userFriendlyMessage += `${errorMessage}\n\nGame continues - you can try claiming again!`;
+        userMessage += errorMessage;
       }
+      
+      alert(`❌ ERROR: ${userMessage}`);
       
       await trackEvent('error_occurred', {
         type: 'manual_win_claim_failed',
         winTypes: winInfo.types,
         error: errorMessage,
-        processingTime: Date.now() - claimStartTime,
         gameActive: timerActive,
       });
-      
-      alert(userFriendlyMessage);
     } finally {
-      console.log('🏁 Claim process finished, resetting claiming state');
       setIsClaimingWin(false);
     }
-  }, [address, winInfo, isClaimingWin, trackEvent, getWinSignature, writeContracts, writeContract, timerActive, gameTimer]);
+  }, [address, winInfo, isClaimingWin, trackEvent, getWinSignature, writeContract, timerActive, gameTimer]);
 
   // Enhanced win detection (non-interrupting, game continues)
   useEffect(() => {
@@ -712,6 +653,13 @@ export default function BingoCard() {
           </p>
           <p className="text-sm opacity-90 mb-2">({winInfo.count} total wins)</p>
           
+          {/* Debug info for mobile */}
+          <div className="text-xs opacity-75 mb-2 bg-white/20 rounded px-2 py-1">
+            DEBUG: Address={address ? '✅ Connected' : '❌ Not connected'} | 
+            Claiming={isClaimingWin ? '⏳ Yes' : '✅ Ready'} | 
+            Wins={winInfo.types.length}
+          </div>
+          
           {timerActive && (
             <p className="text-xs opacity-80 mb-3 bg-white/20 rounded px-2 py-1">
               🎮 Game continues! Keep playing for more wins!
@@ -719,18 +667,27 @@ export default function BingoCard() {
           )}
           
           <button
-            onClick={() => {
-              console.log('🎯 Claim button onClick triggered!');
-              claimWin();
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              if (!isClaimingWin && address && winInfo.types.length > 0) {
+                claimWin();
+              } else {
+                alert(`❌ Button disabled: ${!address ? 'No wallet' : isClaimingWin ? 'Already claiming' : 'No wins'}`);
+              }
             }}
-            disabled={isClaimingWin || !address}
+            disabled={false}
             className={`w-full px-6 py-3 rounded-lg font-bold text-lg transition-all duration-200 ${
               isClaimingWin
-                ? 'bg-gray-400 text-gray-600 cursor-not-allowed'
+                ? 'bg-gray-400 text-gray-600'
                 : !address
-                ? 'bg-gray-300 text-gray-600 cursor-not-allowed'
+                ? 'bg-gray-300 text-gray-600'
                 : 'bg-white text-orange-500 hover:bg-gray-100 shadow-md hover:shadow-lg'
             }`}
+            style={{ 
+              pointerEvents: 'auto',
+              touchAction: 'manipulation'
+            }}
           >
             {isClaimingWin ? (
               '⏳ Claiming 1000 $BINGO...'
