@@ -69,6 +69,7 @@ export default function BingoCard() {
   const [gameTimer, setGameTimer] = useState(120);
   const [timerActive, setTimerActive] = useState(false);
   const [autoDrawInterval, setAutoDrawInterval] = useState<NodeJS.Timeout | null>(null);
+  const [isClaimingWin, setIsClaimingWin] = useState(false);
   const gridRef = useRef<HTMLDivElement>(null);
   
   // Daily limits state
@@ -195,18 +196,6 @@ export default function BingoCard() {
     }
   }, [autoDrawInterval]);
 
-  // Game timer management
-  useEffect(() => {
-    if (timerActive && gameTimer > 0) {
-      const interval = setInterval(() => setGameTimer((prev) => prev - 1), 1000);
-      return () => clearInterval(interval);
-    } else if (gameTimer === 0) {
-      stopAutoDraw();
-      alert('⏰ Time up! Game over.');
-      trackEvent('game_completed', { reason: 'timeout', gameTimer: 0 });
-    }
-  }, [timerActive, gameTimer, stopAutoDraw, trackEvent]);
-
   const resetGame = useCallback(() => {
     const newCard = generateBingoCard();
     setCard(newCard);
@@ -219,11 +208,54 @@ export default function BingoCard() {
     if (autoDrawInterval) clearInterval(autoDrawInterval);
   }, [autoDrawInterval]);
 
+  // Game timer management (only stops on natural completion)
+  useEffect(() => {
+    if (timerActive && gameTimer > 0) {
+      const interval = setInterval(() => setGameTimer((prev) => prev - 1), 1000);
+      return () => clearInterval(interval);
+    } else if (gameTimer === 0 && timerActive) {
+      // Game ends naturally
+      stopAutoDraw();
+      setTimerActive(false);
+      console.log('🎮 Game completed naturally - time expired');
+      
+      if (winInfo.types.length > 0) {
+        alert(`⏰ Time up! Final result: ${winInfo.types.join(' + ')} - Don't forget to claim your rewards!`);
+      } else {
+        alert('⏰ Time up! Game over. Better luck next time!');
+      }
+      
+      trackEvent('game_completed', { 
+        reason: 'timeout', 
+        gameTimer: 0,
+        finalWins: winInfo.types,
+        finalWinCount: winInfo.count,
+      });
+    }
+  }, [timerActive, gameTimer, stopAutoDraw, trackEvent, winInfo]);
+
   const startAutoDraw = useCallback(() => {
     const interval = setInterval(() => {
       setDrawnNumbers((prevDrawn) => {
         if (prevDrawn.size >= 75) {
+          // Natural game completion - all numbers drawn
+          console.log('🎮 Game completed naturally - all numbers drawn');
           stopAutoDraw();
+          setTimerActive(false);
+          
+          trackEvent('game_completed', { 
+            reason: 'all_numbers_drawn', 
+            drawnNumbers: 75,
+            finalWins: winInfo.types,
+            finalWinCount: winInfo.count,
+          });
+          
+          if (winInfo.types.length > 0) {
+            alert(`🎯 All numbers drawn! Final result: ${winInfo.types.join(' + ')} - Claim your rewards!`);
+          } else {
+            alert('🎯 All numbers drawn! Game complete.');
+          }
+          
           return prevDrawn;
         }
         
@@ -239,7 +271,7 @@ export default function BingoCard() {
       });
     }, 3000);
     setAutoDrawInterval(interval);
-  }, [stopAutoDraw]);
+  }, [stopAutoDraw, trackEvent, winInfo]);
 
   // Enhanced game start with analytics
   const startGame = useCallback(async () => {
@@ -314,13 +346,93 @@ export default function BingoCard() {
     }
   }, [card, recentDraws]);
 
-  // Enhanced win detection with automatic claiming
+  // Manual win claiming function (doesn't interrupt game)
+  const claimWin = useCallback(async () => {
+    if (!address || winInfo.types.length === 0 || isClaimingWin) return;
+
+    setIsClaimingWin(true);
+    const claimStartTime = Date.now();
+
+    try {
+      console.log(`🎯 Manual win claim initiated for: ${winInfo.types.join(' + ')}`);
+      console.log(`⚡ Game continues while claiming - timer: ${gameTimer}s remaining`);
+      
+      await trackEvent('manual_win_claim_started', {
+        winTypes: winInfo.types,
+        winCount: winInfo.count,
+        gameActive: timerActive,
+        timeRemaining: gameTimer,
+      });
+
+      const { hash, signature, winData } = await getWinSignature(address, winInfo.types);
+      
+      console.log(`🔐 Claiming win with hash: ${hash.slice(0, 10)}... (game still active)`);
+      
+      if (process.env.NEXT_PUBLIC_CDP_RPC && writeContracts) {
+        // Try gasless claim
+        writeContracts({
+          contracts: [{
+            address: GAME_ADDRESS,
+            abi: bingoGameABI as any,
+            functionName: 'claimWin',
+            args: [hash, signature],
+          }],
+          capabilities: {
+            paymasterService: { url: process.env.NEXT_PUBLIC_CDP_RPC },
+          },
+        });
+      } else {
+        // Fallback to regular transaction
+        writeContract({
+          address: GAME_ADDRESS,
+          abi: bingoGameABI as any,
+          functionName: 'claimWin',
+          args: [hash, signature],
+        });
+      }
+      
+      await trackEvent('manual_win_claim_success', {
+        winTypes: winInfo.types,
+        hash: hash.slice(0, 10),
+        processingTime: Date.now() - claimStartTime,
+        winData,
+        gameActive: timerActive,
+      });
+      
+      console.log('✅ Manual win claim transaction sent! Game continues...');
+      
+      // Non-blocking success message
+      if (timerActive) {
+        alert('🎉 1000 $BINGO claimed! Game continues - keep playing for more wins!');
+      } else {
+        alert('🎉 1000 $BINGO claimed successfully!');
+      }
+
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      console.error('❌ Manual claim failed:', error);
+      
+      await trackEvent('error_occurred', {
+        type: 'manual_win_claim_failed',
+        winTypes: winInfo.types,
+        error: errorMessage,
+        processingTime: Date.now() - claimStartTime,
+        gameActive: timerActive,
+      });
+      
+      alert(`Claim failed: ${errorMessage}\nGame continues - you can try claiming again!`);
+    } finally {
+      setIsClaimingWin(false);
+    }
+  }, [address, winInfo, isClaimingWin, trackEvent, getWinSignature, writeContracts, writeContract, timerActive, gameTimer]);
+
+  // Enhanced win detection (non-interrupting, game continues)
   useEffect(() => {
     const newWin = checkWin(marked);
     if (newWin.count > winInfo.count && address && newWin.count > 0) {
       setWinInfo(newWin);
       
-      // Generate win image
+      // Generate win image (non-blocking)
       if (gridRef.current) {
         toPng(gridRef.current).then((dataUrl) => {
           console.log('📸 Win image generated:', dataUrl);
@@ -332,87 +444,26 @@ export default function BingoCard() {
       const winType = newWin.types[newWin.types.length - 1].toLowerCase().replace(/!/g, '').replace(/\s/g, '-');
       const shareUrl = `https://basedbingo.xyz/win/${winType}`;
       
-      console.log(`🎉 New win detected: ${newWin.types.join(' + ')}`);
-      alert(`🎯 ${newWin.types.join(' + ')}! Claiming 1000 $BINGO automatically! Share: ${shareUrl}`);
+      console.log(`🎉 New win detected: ${newWin.types.join(' + ')} - Game continues!`);
+      console.log(`🎯 Share URL: ${shareUrl}`);
 
-      // Auto-share on Farcaster (disabled for build compatibility)
-      // Note: Farcaster SDK casting will be re-enabled when types are available
-      console.log(`🎉 Win detected: ${newWin.types.join(' + ')} - Share URL: ${shareUrl}`);
+      // Track win detection (non-blocking)
+      trackEvent('win_detected', {
+        winTypes: newWin.types,
+        winCount: newWin.count,
+        gameTimer,
+        markedCells: marked.size,
+        gameActive: timerActive, // Track that game is still active
+      });
 
-      // Enhanced automatic win claiming
-      const claimWinAutomatically = async () => {
-        const claimStartTime = Date.now();
-        
-        try {
-          console.log(`🔐 Processing win claim...`);
-          (window as { winDetectionTime?: number }).winDetectionTime = Date.now();
-          
-          // Track win detection
-          await trackEvent('win_detected', {
-            winTypes: newWin.types,
-            winCount: newWin.count,
-            gameTimer,
-            markedCells: marked.size,
-          });
-          
-          const { hash, signature, winData } = await getWinSignature(address, newWin.types);
-          
-          console.log(`🎯 Claiming win with hash: ${hash.slice(0, 10)}...`);
-          
-          if (process.env.NEXT_PUBLIC_CDP_RPC && writeContracts) {
-            // Try gasless claim
-            writeContracts({
-              contracts: [{
-                address: GAME_ADDRESS,
-                abi: bingoGameABI as any,
-                functionName: 'claimWin',
-                args: [hash, signature],
-              }],
-              capabilities: {
-                paymasterService: { url: process.env.NEXT_PUBLIC_CDP_RPC },
-              },
-            });
-          } else {
-            // Fallback to regular transaction
-            writeContract({
-              address: GAME_ADDRESS,
-              abi: bingoGameABI as any,
-              functionName: 'claimWin',
-              args: [hash, signature],
-            });
-          }
-          
-          // Track successful claim initiation
-          await trackEvent('win_claim_initiated', {
-            winTypes: newWin.types,
-            hash: hash.slice(0, 10),
-            processingTime: Date.now() - claimStartTime,
-            winData,
-          });
-          
-          console.log('✅ Win claim transaction sent!');
-          alert('🎉 Win claimed! 1000 $BINGO should arrive shortly!');
-          
-        } catch (error) {
-          const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-          console.error('❌ Auto-claim failed:', error);
-          
-          // Track claim failure
-          await trackEvent('error_occurred', {
-            type: 'win_claim_failed',
-            winTypes: newWin.types,
-            error: errorMessage,
-            processingTime: Date.now() - claimStartTime,
-          });
-          
-          alert(`Win detected but auto-claim failed: ${errorMessage}\nPlease try again or contact support.`);
-        }
-      };
-
-      // Execute auto-claim
-      claimWinAutomatically();
+      // Show a brief non-blocking notification
+      if (newWin.count === 1) {
+        console.log('🎯 First BINGO achieved! Game continues - go for more wins!');
+      } else if (newWin.count >= 2) {
+        console.log('🔥 Multiple BINGOs! Keep playing for maximum rewards!');
+      }
     }
-  }, [marked, address, winInfo.count, gameTimer, trackEvent, getWinSignature, writeContracts, writeContract]);
+  }, [marked, address, winInfo.count, gameTimer, trackEvent, timerActive]);
 
   const shareForExtraPlay = useCallback(async () => {
     try {
@@ -521,17 +572,33 @@ export default function BingoCard() {
 
   return (
     <div className="text-center max-w-sm mx-auto">
-      {/* Wallet Connection Status */}
-      {!address ? (
-        <button className="bg-coinbase-blue text-white px-6 py-2 rounded-lg font-bold hover:bg-blue-600 mb-4">
-          Connect Wallet (for $BINGO)
-        </button>
-      ) : (
-        <p className="text-sm text-coinbase-blue mb-4">
-          Connected: {address.slice(0, 6)}...{address.slice(-4)}
-          {process.env.NEXT_PUBLIC_CDP_RPC && <span className="ml-2 text-green-600">⚡ Gasless</span>}
-        </p>
+      {/* Timer and Recent Draws at Top */}
+      {timerActive && (
+        <div className="mb-4">
+          <p className="text-xl text-red-500 font-bold animate-pulse mb-3">
+            ⏰ Time Left: {Math.floor(gameTimer / 60)}:{gameTimer % 60 < 10 ? '0' : ''}{gameTimer % 60}
+          </p>
+        </div>
       )}
+
+      {/* Recent Draws */}
+      <div className="flex justify-center gap-2 mb-4">
+        {recentDraws.length > 0 ? (
+          recentDraws.map((num, idx) => (
+            <div
+              key={idx}
+              className={`w-12 h-12 border-2 border-coinbase-blue flex items-center justify-center text-lg font-bold rounded transition-opacity duration-500
+                ${idx === recentDraws.length - 1 ? 'bg-coinbase-blue text-white animate-bounce' : 'opacity-60'}`}
+            >
+              {num}
+            </div>
+          ))
+        ) : (
+          <div className="h-12 flex items-center justify-center">
+            <p className="text-sm text-gray-400">Waiting for draws...</p>
+          </div>
+        )}
+      </div>
 
       {/* Bingo Grid */}
       <div ref={gridRef} className="grid grid-cols-5 gap-1 mb-4">
@@ -565,7 +632,7 @@ export default function BingoCard() {
       </div>
 
       {/* Game Controls */}
-      <div className="flex justify-center gap-4 mb-2">
+      <div className="flex justify-center gap-4 mb-4">
         <button 
           onClick={startGame} 
           disabled={!unlimitedToday && dailyPlays >= MAX_FREE_PLAYS}
@@ -575,39 +642,51 @@ export default function BingoCard() {
         </button>
       </div>
 
-      {/* Game Timer */}
-      {timerActive && (
-        <p className="text-xl text-red-500 font-bold animate-pulse">
-          ⏰ Time Left: {Math.floor(gameTimer / 60)}:{gameTimer % 60 < 10 ? '0' : ''}{gameTimer % 60}
-        </p>
-      )}
-
-      {/* Recent Draws */}
-      <div className="flex justify-center gap-2 mt-2">
-        {recentDraws.map((num, idx) => (
-          <div
-            key={idx}
-            className={`w-12 h-12 border-2 border-coinbase-blue flex items-center justify-center text-lg font-bold rounded transition-opacity duration-500
-              ${idx === recentDraws.length - 1 ? 'bg-coinbase-blue text-white animate-bounce' : 'opacity-60'}`}
-          >
-            {num}
-          </div>
-        ))}
-      </div>
-
-      {/* Win Status */}
+      {/* Win Status with Clickable Claim Button - Game Continues */}
       {winInfo.types.length > 0 && (
-        <div className="mt-4 p-3 bg-gradient-to-r from-yellow-400 to-orange-500 text-white rounded-lg shadow-lg">
-          <p className="text-2xl font-bold animate-pulse">
+        <div className="mb-4 p-4 bg-gradient-to-r from-yellow-400 to-orange-500 text-white rounded-lg shadow-lg">
+          <p className="text-2xl font-bold animate-pulse mb-2">
             🎉 {winInfo.types.join(' + ')} 
           </p>
-          <p className="text-sm opacity-90">({winInfo.count} total wins)</p>
+          <p className="text-sm opacity-90 mb-2">({winInfo.count} total wins)</p>
+          
+          {timerActive && (
+            <p className="text-xs opacity-80 mb-3 bg-white/20 rounded px-2 py-1">
+              🎮 Game continues! Keep playing for more wins!
+            </p>
+          )}
+          
+          <button
+            onClick={claimWin}
+            disabled={isClaimingWin || !address}
+            className={`w-full px-6 py-3 rounded-lg font-bold text-lg transition-all duration-200 ${
+              isClaimingWin
+                ? 'bg-gray-400 text-gray-600 cursor-not-allowed'
+                : 'bg-white text-orange-500 hover:bg-gray-100 shadow-md hover:shadow-lg'
+            }`}
+          >
+            {isClaimingWin ? (
+              '⏳ Claiming 1000 $BINGO...'
+            ) : (
+              '🎯 CLAIM 1000 $BINGO TOKENS!'
+            )}
+          </button>
+          
+          {!address && (
+            <p className="text-xs opacity-75 mt-2">Connect wallet to claim rewards</p>
+          )}
+          
+          {timerActive && (
+            <p className="text-xs opacity-75 mt-2">
+              💡 Tip: You can claim now or wait for more wins!
+            </p>
+          )}
         </div>
       )}
 
       {/* Daily Limit Upsells */}
       {(!unlimitedToday && dailyPlays >= MAX_FREE_PLAYS) && (
-        <div className="mt-4 p-4 bg-blue-100 rounded-lg shadow-md">
+        <div className="mb-4 p-4 bg-blue-100 rounded-lg shadow-md">
           <p className="text-coinbase-blue mb-3 font-semibold">🎯 Free plays used up today! Get more:</p>
           <div className="space-y-2">
             <button 
@@ -631,6 +710,22 @@ export default function BingoCard() {
           {process.env.NEXT_PUBLIC_CDP_RPC && (
             <p className="text-xs text-green-600 mt-2">⚡ Gasless transactions enabled</p>
           )}
+        </div>
+      )}
+
+      {/* Wallet Connection Status - Moved to Bottom */}
+      {!address ? (
+        <div className="mt-4 p-3 bg-gray-100 rounded-lg">
+          <button className="w-full bg-coinbase-blue text-white px-6 py-2 rounded-lg font-bold hover:bg-blue-600">
+            Connect Wallet (for $BINGO)
+          </button>
+        </div>
+      ) : (
+        <div className="mt-4 p-2 bg-gray-50 rounded-lg">
+          <p className="text-sm text-coinbase-blue">
+            Connected: {address.slice(0, 6)}...{address.slice(-4)}
+            {process.env.NEXT_PUBLIC_CDP_RPC && <span className="ml-2 text-green-600">⚡ Gasless</span>}
+          </p>
         </div>
       )}
     </div>
