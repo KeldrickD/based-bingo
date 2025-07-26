@@ -263,14 +263,13 @@ export default function BingoCard() {
     if (!unlimitedToday && address) {
       try {
         if (process.env.NEXT_PUBLIC_CDP_RPC && writeContracts) {
-          // Try gasless transaction
+          // Try gasless transaction (Note: entry fee handled separately for gasless)
           writeContracts({
             contracts: [{
               address: GAME_ADDRESS,
               abi: bingoGameABI as any,
               functionName: 'join',
               args: [],
-              value: BigInt(Math.floor(0.0005 * Math.pow(10, 18))), // 0.0005 ETH
             }],
             capabilities: {
               paymasterService: { url: process.env.NEXT_PUBLIC_CDP_RPC },
@@ -278,7 +277,7 @@ export default function BingoCard() {
           });
           console.log('⚡ Using gasless transaction');
         } else {
-          // Fallback to regular transaction
+          // Fallback to regular transaction with entry fee
           writeContract({
             address: GAME_ADDRESS,
             abi: bingoGameABI as any,

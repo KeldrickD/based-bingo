@@ -189,9 +189,11 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     filteredEvents
       .filter(e => e.event === 'win_detected' && e.data?.winTypes)
       .forEach(e => {
-        e.data.winTypes.forEach((winType: string) => {
-          metrics.popularWinTypes[winType] = (metrics.popularWinTypes[winType] || 0) + 1;
-        });
+        if (e.data && Array.isArray(e.data.winTypes)) {
+          (e.data.winTypes as string[]).forEach((winType: string) => {
+            metrics.popularWinTypes[winType] = (metrics.popularWinTypes[winType] || 0) + 1;
+          });
+        }
       });
 
     const response = {
