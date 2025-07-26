@@ -1,8 +1,22 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { ethers } from 'ethers';
 
-// BingoGameV3 ABI
+// Complete BingoGameV3 ABI - you should replace this with the full ABI from your compiled contract
 const bingoGameV3ABI = [
+  {
+    "inputs": [],
+    "name": "join",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "buyUnlimited", 
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
   {
     "inputs": [
       {"internalType": "address", "name": "player", "type": "address"},
@@ -10,7 +24,15 @@ const bingoGameV3ABI = [
     ],
     "name": "awardWins",
     "outputs": [],
-    "stateMutability": "nonpayable",
+    "stateMutability": "nonpayable", 
+    "type": "function"
+  },
+  // Add other functions as needed for debugging
+  {
+    "inputs": [],
+    "name": "owner",
+    "outputs": [{"internalType": "address", "name": "", "type": "address"}],
+    "stateMutability": "view",
     "type": "function"
   }
 ];
@@ -19,21 +41,35 @@ const GAME_ADDRESS = '0x4CE879376Dc50aBB1Eb8F236B76e8e5a724780Be';
 const BASE_RPC_URL = 'https://mainnet.base.org';
 
 export async function POST(request: NextRequest) {
+  const startTime = Date.now();
+  console.log('🚀 Award-wins API called at:', new Date().toISOString());
+  
   try {
-    const { address, winTypes } = await request.json();
+    // Parse and validate request body
+    const requestBody = await request.json();
+    const { address, winTypes } = requestBody;
+    
+    console.log('📋 Request details:', {
+      address: address ? `${address.slice(0, 6)}...${address.slice(-4)}` : 'undefined',
+      winTypes,
+      winTypesLength: winTypes?.length,
+      requestBody: JSON.stringify(requestBody)
+    });
 
     // Validate input
     if (!address || !winTypes || !Array.isArray(winTypes) || winTypes.length === 0) {
+      console.error('❌ Invalid request body:', { address: !!address, winTypes, winTypesArray: Array.isArray(winTypes) });
       return NextResponse.json(
-        { error: 'Invalid input: address and winTypes array required' },
+        { success: false, message: 'Invalid request data: address and winTypes array required' },
         { status: 400 }
       );
     }
 
     // Validate address format
     if (!ethers.isAddress(address)) {
+      console.error('❌ Invalid address format:', address);
       return NextResponse.json(
-        { error: 'Invalid wallet address format' },
+        { success: false, message: 'Invalid wallet address format' },
         { status: 400 }
       );
     }
@@ -41,53 +77,116 @@ export async function POST(request: NextRequest) {
     // Check for owner private key
     const ownerPrivateKey = process.env.OWNER_PRIVATE_KEY;
     if (!ownerPrivateKey) {
-      console.error('❌ OWNER_PRIVATE_KEY not set in environment variables');
+      console.error('❌ CRITICAL: OWNER_PRIVATE_KEY not set in environment variables');
       return NextResponse.json(
-        { error: 'Server configuration error: missing owner key' },
+        { success: false, message: 'Server configuration error: missing owner key' },
         { status: 500 }
       );
     }
 
-    console.log('🎯 Auto-awarding wins:', { 
-      address: `${address.slice(0, 6)}...${address.slice(-4)}`, 
-      winTypes,
-      timestamp: new Date().toISOString()
-    });
+    console.log('🔧 Environment check passed - private key available');
 
     // Set up provider and signer
+    console.log('🌐 Connecting to Base mainnet...');
     const provider = new ethers.JsonRpcProvider(BASE_RPC_URL);
     const signer = new ethers.Wallet(ownerPrivateKey, provider);
     
-    // Verify signer has ETH for gas
+    console.log('👛 Owner wallet address:', signer.address);
+    
+    // Verify network connection and get owner balance
+    const network = await provider.getNetwork();
     const balance = await provider.getBalance(signer.address);
-    console.log('👛 Owner wallet balance:', ethers.formatEther(balance), 'ETH');
+    const balanceEth = ethers.formatEther(balance);
+    
+    console.log('🌍 Network info:', {
+      chainId: network.chainId.toString(),
+      name: network.name,
+      ownerBalance: `${balanceEth} ETH`
+    });
     
     if (balance < ethers.parseEther('0.001')) {
-      console.error('❌ Owner wallet has insufficient ETH for gas');
+      console.error('❌ CRITICAL: Owner wallet has insufficient ETH for gas:', balanceEth, 'ETH');
       return NextResponse.json(
-        { error: 'Server error: insufficient gas funds' },
+        { success: false, message: 'Server error: insufficient gas funds in owner wallet' },
         { status: 500 }
       );
     }
     
     // Create contract instance
+    console.log('📝 Creating contract instance...');
     const contract = new ethers.Contract(GAME_ADDRESS, bingoGameV3ABI, signer);
+    
+    // Verify contract owner (optional debugging step)
+    try {
+      const contractOwner = await contract.owner();
+      console.log('🏛️ Contract owner verification:', {
+        contractOwner,
+        signerAddress: signer.address,
+        isOwner: contractOwner.toLowerCase() === signer.address.toLowerCase()
+      });
+      
+      if (contractOwner.toLowerCase() !== signer.address.toLowerCase()) {
+        console.error('❌ CRITICAL: Signer is not the contract owner!');
+        return NextResponse.json(
+          { success: false, message: 'Server error: unauthorized signer' },
+          { status: 500 }
+        );
+      }
+    } catch (ownerCheckError: any) {
+      console.warn('⚠️ Could not verify contract owner (function may not exist):', ownerCheckError.message);
+    }
+
+    // Estimate gas for the transaction
+    console.log('⛽ Estimating gas for awardWins transaction...');
+    let gasEstimate;
+    try {
+      gasEstimate = await contract.awardWins.estimateGas(address, winTypes);
+      console.log('⛽ Gas estimate:', gasEstimate.toString());
+    } catch (gasError: any) {
+      console.error('❌ Gas estimation failed:', gasError.message);
+      console.error('❌ Gas estimation error details:', {
+        code: gasError.code,
+        reason: gasError.reason,
+        data: gasError.data
+      });
+      return NextResponse.json(
+        { success: false, message: 'Gas estimation failed: ' + gasError.message },
+        { status: 500 }
+      );
+    }
 
     // Call awardWins function
     console.log('📞 Calling awardWins on contract...');
-    const tx = await contract.awardWins(address, winTypes, {
-      gasLimit: 200000, // Set reasonable gas limit
+    const txParams = {
+      gasLimit: Math.max(Number(gasEstimate) * 2, 200000), // Use 2x estimate with minimum 200k
+    };
+    console.log('📞 Transaction parameters:', txParams);
+    
+    const tx = await contract.awardWins(address, winTypes, txParams);
+    
+    console.log('⏳ Transaction submitted:', {
+      hash: tx.hash,
+      nonce: tx.nonce,
+      gasLimit: tx.gasLimit?.toString(),
+      gasPrice: tx.gasPrice?.toString()
     });
     
-    console.log('⏳ Transaction submitted:', tx.hash);
-    
     // Wait for confirmation
+    console.log('⏳ Waiting for transaction confirmation...');
     const receipt = await tx.wait();
-    console.log('✅ Transaction confirmed in block:', receipt.blockNumber);
-
-    // Calculate rewards
+    
+    const processingTime = Date.now() - startTime;
     const totalRewards = 1000 * winTypes.length;
-    console.log(`✅ Successfully awarded ${totalRewards} $BINGO (${winTypes.join(' + ')}) to ${address}`);
+    
+    console.log('✅ Transaction confirmed successfully:', {
+      hash: receipt.hash,
+      blockNumber: receipt.blockNumber,
+      gasUsed: receipt.gasUsed?.toString(),
+      status: receipt.status,
+      processingTimeMs: processingTime
+    });
+
+    console.log(`🎉 Successfully awarded ${totalRewards} $BINGO (${winTypes.join(' + ')}) to ${address}`);
 
     return NextResponse.json({
       success: true,
@@ -98,16 +197,27 @@ export async function POST(request: NextRequest) {
       playerAddress: address,
       totalRewards,
       gasUsed: receipt.gasUsed?.toString(),
+      processingTimeMs: processingTime,
+      timestamp: new Date().toISOString()
     });
 
   } catch (error: any) {
-    console.error('❌ Award wins failed:', error);
+    const processingTime = Date.now() - startTime;
+    console.error('❌ Award wins FAILED after', processingTime, 'ms');
+    console.error('❌ Error details:', {
+      message: error.message,
+      code: error.code,
+      reason: error.reason,
+      data: error.data,
+      stack: error.stack?.split('\n').slice(0, 10) // First 10 lines of stack
+    });
     
     let errorMessage = 'Unknown error occurred';
     let statusCode = 500;
 
     if (error.message?.includes('insufficient funds')) {
       errorMessage = 'Insufficient ETH for gas fees in owner wallet';
+      statusCode = 500;
     } else if (error.message?.includes('execution reverted')) {
       errorMessage = 'Contract execution failed - possible duplicate claim or contract issue';
       statusCode = 400;
@@ -117,23 +227,24 @@ export async function POST(request: NextRequest) {
     } else if (error.message?.includes('nonce too low')) {
       errorMessage = 'Transaction nonce error - please try again';
       statusCode = 429;
+    } else if (error.message?.includes('replacement transaction underpriced')) {
+      errorMessage = 'Transaction replacement error - please wait and try again';
+      statusCode = 429;
+    } else if (error.message?.includes('timeout')) {
+      errorMessage = 'Transaction timeout - may still be processing';
+      statusCode = 408;
     } else if (error.message) {
       errorMessage = error.message;
     }
 
-    // Log detailed error for debugging
-    console.error('📝 Detailed error info:', {
-      message: error.message,
-      code: error.code,
-      reason: error.reason,
-      transaction: error.transaction,
-      stack: error.stack?.split('\n').slice(0, 5), // First 5 lines of stack
-    });
-
     return NextResponse.json(
       {
-        error: 'Failed to award wins',
+        success: false,
+        message: 'Failed to award wins',
         details: errorMessage,
+        errorCode: error.code,
+        errorReason: error.reason,
+        processingTimeMs: processingTime,
         timestamp: new Date().toISOString(),
       },
       { status: statusCode }

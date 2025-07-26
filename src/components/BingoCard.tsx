@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { sdk } from '@farcaster/miniapp-sdk';
-import html2canvas from 'html2canvas';
+import { toPng } from 'html-to-image';
 import { useAccount } from 'wagmi';
 import { useWriteContracts } from 'wagmi/experimental';
 import basedBingoABI from '@/abis/BasedBingo.json';
@@ -11,12 +11,12 @@ import bingoGameV3ABI from '@/abis/BingoGameV3.json';
 const TOKEN_ADDRESS = '0xd5D90dF16CA7b11Ad852e3Bf93c0b9b774CEc047' as `0x${string}`;
 const GAME_ADDRESS = '0x4CE879376Dc50aBB1Eb8F236B76e8e5a724780Be' as `0x${string}`;
 
-function generateBingoCard() {
+function generateBingoCard(): (number | string)[][] {
   const columnRanges = [
-    { label: 'B', min: 1, max: 15 },
-    { label: 'I', min: 16, max: 30 },
-    { label: 'N', min: 31, max: 45 },
-    { label: 'G', min: 46, max: 60 },
+    { label: 'B', min: 1, max: 15 }, 
+    { label: 'I', min: 16, max: 30 }, 
+    { label: 'N', min: 31, max: 45 }, 
+    { label: 'G', min: 46, max: 60 }, 
     { label: 'O', min: 61, max: 75 }
   ];
   
@@ -26,8 +26,8 @@ function generateBingoCard() {
       .slice(0, 5)
   );
   
-  // Set center cell as FREE
-  (card[2] as (number | string)[])[2] = 'FREE';
+  // Set center cell as FREE  
+  card[2][2] = 'FREE';
   return card;
 }
 
@@ -35,18 +35,15 @@ const checkWin = (marked: Set<string>) => {
   const positions = [
     // Rows
     ['00', '01', '02', '03', '04'], ['10', '11', '12', '13', '14'], ['20', '21', '22', '23', '24'],
-    ['30', '31', '32', '33', '34'], ['40', '41', '42', '43', '44'],
+    ['30', '31', '32', '33', '34'], ['40', '41', '42', '43', '44'], 
     // Columns
     ['00', '10', '20', '30', '40'], ['01', '11', '21', '31', '41'], ['02', '12', '22', '32', '42'],
-    ['03', '13', '23', '33', '43'], ['04', '14', '24', '34', '44'],
+    ['03', '13', '23', '33', '43'], ['04', '14', '24', '34', '44'], 
     // Diagonals
     ['00', '11', '22', '33', '44'], ['04', '13', '22', '31', '40'],
   ];
   
-  const completed = positions.filter(line => 
-    line.every(pos => marked.has(pos) || pos === '22')
-  );
-  
+  const completed = positions.filter(line => line.every(pos => marked.has(pos) || pos === '22'));
   const count = completed.length;
   const types: string[] = [];
   
@@ -77,7 +74,6 @@ export default function BingoCard() {
   const [dailyPlays, setDailyPlays] = useState(0);
   const [lastPlayDate, setLastPlayDate] = useState('');
   const [unlimitedToday, setUnlimitedToday] = useState(false);
-  const [isProcessingPayment, setIsProcessingPayment] = useState(false);
   const MAX_FREE_PLAYS = 3;
 
   // Initialize daily limits
@@ -127,7 +123,7 @@ export default function BingoCard() {
     const interval = setInterval(() => {
       setDrawnNumbers(prevDrawn => {
         if (prevDrawn.size >= 75) {
-          console.log('🎮 All numbers drawn - game complete');
+          console.log('🎮 All numbers drawn - stopping auto draw');
           clearInterval(interval);
           setTimerActive(false);
           alert('🎯 All numbers drawn! Game complete.');
@@ -172,32 +168,30 @@ export default function BingoCard() {
     setTimerActive(true);
     startAutoDraw();
 
-    // Join game via contract if wallet connected
-    if (address && !unlimitedToday) {
+    // Join game via contract if wallet connected and not unlimited
+    if (!unlimitedToday && address) {
       try {
-        console.log('📞 Calling contract join...');
+        console.log('📞 Calling contract join function...');
         await writeContracts({
-          contracts: [
-            {
-              address: GAME_ADDRESS,
-              abi: bingoGameV3ABI as any,
-              functionName: 'join',
-              args: [],
-            },
-          ],
+          contracts: [{ 
+            address: GAME_ADDRESS, 
+            abi: bingoGameV3ABI as any, 
+            functionName: 'join', 
+            args: [] 
+          }],
           capabilities: process.env.NEXT_PUBLIC_CDP_RPC ? {
-            paymasterService: { url: process.env.NEXT_PUBLIC_CDP_RPC },
+            paymasterService: { url: process.env.NEXT_PUBLIC_CDP_RPC }
           } : undefined,
         });
         
-        console.log('✅ Successfully joined game');
+        console.log('✅ Successfully joined game via contract');
         const newPlays = dailyPlays + 1;
         setDailyPlays(newPlays);
         localStorage.setItem('dailyPlays', newPlays.toString());
         
-      } catch (error) {
-        console.error('❌ Join failed:', error);
-        alert('Join failed: ' + (error instanceof Error ? error.message : 'Check network or paymaster'));
+      } catch (error: any) {
+        console.error('❌ Contract join failed:', error);
+        alert('Join failed: ' + (error.message || 'Check network or paymaster'));
         // Continue game even if join fails
       }
     } else if (!address) {
@@ -217,19 +211,26 @@ export default function BingoCard() {
     }
   }, [card, recentDraws]);
 
-  // Win detection with automatic rewards
+  // Enhanced win detection with comprehensive logging
   useEffect(() => {
     const newWin = checkWin(marked);
     if (newWin.count > winInfo.count && address && newWin.count > 0) {
+      console.log('🎉 WIN DETECTED:', { 
+        newWinCount: newWin.count, 
+        previousWinCount: winInfo.count,
+        winTypes: newWin.types,
+        address: `${address.slice(0, 6)}...${address.slice(-4)}`,
+        timestamp: new Date().toISOString()
+      });
+      
       setWinInfo(newWin);
       
       // Generate win image
       if (gridRef.current) {
-        html2canvas(gridRef.current).then((canvas) => {
-          const imageData = canvas.toDataURL('image/png');
-          console.log('📸 Win image generated:', imageData);
-        }).catch((error) => {
-          console.error('Failed to generate win image:', error);
+        toPng(gridRef.current).then((dataUrl) => {
+          console.log('📸 Win image generated:', dataUrl.length, 'bytes');
+        }).catch((error: any) => {
+          console.error('Win image generation failed:', error);
         });
       }
 
@@ -239,66 +240,75 @@ export default function BingoCard() {
         .replace(/\s/g, '-');
       const shareUrl = `https://basedbingo.xyz/win/${winType}`;
       
-      console.log(`🎉 New win detected: ${newWin.types.join(' + ')}`);
-      alert(`🎉 New win! Share on Farcaster: ${shareUrl}`);
+      alert(`🎉 ${newWin.types.join(' + ')} achieved! Rewards automatically sent to your wallet! Share: ${shareUrl}`);
 
-      // Auto-cast to Farcaster
+      // Auto-cast to Farcaster  
       try {
-        // Note: sdk.actions.cast may not be available in all environments
         if ('actions' in sdk && 'cast' in (sdk as any).actions) {
           (sdk as any).actions.cast({
             text: `Just got ${newWin.types.join(' + ')} in Based Bingo! Won ${1000 * newWin.types.length} $BINGO—play now!`,
             embeds: [{ url: shareUrl }],
-          }).catch((error: any) => console.error('Cast failed:', error));
+          }).catch((error: any) => console.error('Farcaster cast failed:', error));
         } else {
           console.log('Farcaster cast not available in this environment');
         }
       } catch (error: any) {
-        console.error('Farcaster cast failed:', error);
+        console.error('Farcaster SDK error:', error);
       }
 
-      // Auto-award wins via backend
+      // CRITICAL: Auto-award wins via backend with enhanced logging
+      console.log('🚀 Starting automatic reward process...');
+      console.log('📡 Calling /api/award-wins with:', { address, winTypes: newWin.types });
+      
       fetch('/api/award-wins', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ address, winTypes: newWin.types }),
       })
       .then(res => {
-        if (!res.ok) throw new Error(`Server responded with ${res.status}`);
+        console.log('📨 API Response status:', res.status, res.statusText);
+        if (!res.ok) {
+          throw new Error(`Server error: ${res.status} ${res.statusText}`);
+        }
         return res.json();
       })
       .then(data => {
-        console.log('✅ Rewards awarded:', data);
-        alert(`🎉 ${1000 * newWin.types.length} $BINGO automatically awarded to your wallet!`);
+        console.log('✅ Award API success:', data);
+        alert(`🎉 ${1000 * newWin.types.length} $BINGO automatically awarded! Tx: ${data.transactionHash?.slice(0, 10)}...`);
       })
-      .catch((error) => {
-        console.error('❌ Award failed:', error);
-        alert('🎉 Win detected! However, reward processing failed. Please contact support.');
+      .catch((error: any) => {
+        console.error('❌ Award API failed:', error);
+        console.error('❌ Error details:', {
+          message: error.message,
+          stack: error.stack,
+          name: error.name
+        });
+        alert('🎉 Win detected! However, automatic reward failed: ' + error.message + '. Check console for details.');
       });
     }
   }, [marked, address, winInfo.count]);
 
   const shareForExtraPlay = async () => {
     try {
-      console.log('📢 Sharing for extra play...');
+      console.log('📢 Attempting share for extra play...');
       
-      // Note: sdk.actions.cast may not be available in all environments
       if ('actions' in sdk && 'cast' in (sdk as any).actions) {
         await (sdk as any).actions.cast({
           text: 'Loving Based Bingo—join the fun! https://basedbingo.xyz',
           embeds: [{ url: 'https://basedbingo.xyz' }],
         });
+        console.log('✅ Share cast successful');
       } else {
         console.log('Farcaster cast not available, granting extra play anyway');
       }
       
       setDailyPlays(0);
       localStorage.setItem('dailyPlays', '0');
-      alert('🎉 Shared successfully! You get +1 play today.');
+      alert('✅ Shared! You get +1 play today.');
       
     } catch (error: any) {
       console.error('❌ Share failed:', error);
-      alert('Share failed—please try again.');
+      alert('Share failed—try again.');
     }
   };
 
@@ -307,30 +317,27 @@ export default function BingoCard() {
       alert('Please connect your wallet first.');
       return;
     }
-
-    if (isProcessingPayment) return;
-    setIsProcessingPayment(true);
-
+    
     try {
       console.log('💳 Purchasing unlimited access...');
       
       await writeContracts({
         contracts: [
-          {
-            address: TOKEN_ADDRESS,
-            abi: basedBingoABI as any,
-            functionName: 'approve',
-            args: [GAME_ADDRESS, BigInt(50 * Math.pow(10, 18))],
+          { 
+            address: TOKEN_ADDRESS, 
+            abi: basedBingoABI as any, 
+            functionName: 'approve', 
+            args: [GAME_ADDRESS, BigInt(50 * Math.pow(10, 18))]
           },
-          {
-            address: GAME_ADDRESS,
-            abi: bingoGameV3ABI as any,
-            functionName: 'buyUnlimited',
-            args: [],
+          { 
+            address: GAME_ADDRESS, 
+            abi: bingoGameV3ABI as any, 
+            functionName: 'buyUnlimited', 
+            args: [] 
           },
         ],
         capabilities: process.env.NEXT_PUBLIC_CDP_RPC ? {
-          paymasterService: { url: process.env.NEXT_PUBLIC_CDP_RPC },
+          paymasterService: { url: process.env.NEXT_PUBLIC_CDP_RPC }
         } : undefined,
       });
       
@@ -340,12 +347,9 @@ export default function BingoCard() {
       alert('✅ Unlimited access unlocked for today with 50 $BINGO!');
       console.log('✅ Unlimited purchase completed');
       
-    } catch (error) {
+    } catch (error: any) {
       console.error('❌ Unlimited purchase failed:', error);
-      alert('Failed to purchase unlimited access: ' + 
-        (error instanceof Error ? error.message : 'Check $BINGO balance and network'));
-    } finally {
-      setIsProcessingPayment(false);
+      alert('Failed to purchase unlimited access: ' + (error.message || 'Check $BINGO balance'));
     }
   };
 
@@ -355,9 +359,9 @@ export default function BingoCard() {
       {!address ? (
         <div className="mb-4 p-3 bg-blue-50 rounded-lg">
           <button className="w-full bg-coinbase-blue text-white px-6 py-2 rounded-lg font-bold hover:bg-blue-600 mb-2">
-            Connect Wallet
+            Connect Wallet (for $BINGO)
           </button>
-          <p className="text-xs text-blue-700">Connect for automatic $BINGO rewards</p>
+          <p className="text-xs text-blue-700">Connect for automatic rewards</p>
         </div>
       ) : (
         <div className="mb-4 p-2 bg-green-50 rounded-lg">
@@ -372,31 +376,10 @@ export default function BingoCard() {
 
       {/* Timer */}
       {timerActive && (
-        <div className="mb-4">
-          <p className="text-xl text-red-500 font-bold animate-pulse">
-            ⏰ Time Left: {Math.floor(gameTimer / 60)}:{gameTimer % 60 < 10 ? '0' : ''}{gameTimer % 60}
-          </p>
-        </div>
+        <p className="text-xl text-red-500 font-bold animate-pulse mb-4">
+          ⏰ Time Left: {Math.floor(gameTimer / 60)}:{gameTimer % 60 < 10 ? '0' : ''}{gameTimer % 60}
+        </p>
       )}
-
-      {/* Recent Draws */}
-      <div className="flex justify-center gap-2 mb-4">
-        {recentDraws.length > 0 ? (
-          recentDraws.map((num, idx) => (
-            <div
-              key={idx}
-              className={`w-12 h-12 border-2 border-coinbase-blue flex items-center justify-center text-lg font-bold rounded transition-all duration-500
-                ${idx === recentDraws.length - 1 ? 'bg-coinbase-blue text-white animate-bounce' : 'bg-white text-coinbase-blue opacity-60'}`}
-            >
-              {num}
-            </div>
-          ))
-        ) : (
-          <div className="h-12 flex items-center justify-center">
-            <p className="text-sm text-gray-400">Waiting for draws...</p>
-          </div>
-        )}
-      </div>
 
       {/* Bingo Grid */}
       <div ref={gridRef} className="grid grid-cols-5 gap-1 mb-4">
@@ -415,16 +398,12 @@ export default function BingoCard() {
                 key={pos}
                 onClick={() => markCell(row, col)}
                 className={`w-full aspect-square border-2 border-coinbase-blue flex items-center justify-center text-sm font-bold rounded transition-all duration-200
-                  ${isMarked ? 'bg-coinbase-blue text-white shadow-lg' : 'bg-white text-coinbase-blue hover:bg-blue-100'}
-                  ${num === 'FREE' ? 'text-xs' : ''}
+                  ${isMarked ? 'bg-coinbase-blue text-white' : 'bg-white text-coinbase-blue hover:bg-blue-100'}
+                  ${num === 'FREE' ? 'text-xs rotate-[-45deg]' : ''}
                   ${isDrawn && !isMarked ? 'animate-pulse border-green-500 border-4' : ''}`}
                 disabled={isMarked || (typeof num !== 'number' && num !== 'FREE')}
               >
-                {num === 'FREE' ? (
-                  <span className="rotate-[-45deg]">FREE</span>
-                ) : (
-                  num
-                )}
+                {num}
               </button>
             );
           })
@@ -432,69 +411,63 @@ export default function BingoCard() {
       </div>
 
       {/* Game Controls */}
-      <div className="flex justify-center gap-4 mb-4">
+      <div className="flex justify-center gap-4 mb-2">
         <button 
           onClick={startGame}
           disabled={!unlimitedToday && dailyPlays >= MAX_FREE_PLAYS}
-          className="bg-coinbase-blue text-white px-6 py-2 rounded-lg font-bold hover:bg-blue-600 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors"
+          className="bg-gray-500 text-white px-6 py-2 rounded-lg font-bold hover:bg-gray-600 disabled:bg-gray-400 disabled:cursor-not-allowed"
         >
           🎮 New Game ({unlimitedToday ? 'Unlimited' : `${MAX_FREE_PLAYS - dailyPlays} left`})
         </button>
       </div>
 
+      {/* Recent Draws */}
+      <div className="flex justify-center gap-2 mt-2 mb-4">
+        {recentDraws.length > 0 ? (
+          recentDraws.map((num, idx) => (
+            <div
+              key={idx}
+              className={`w-12 h-12 border-2 border-coinbase-blue flex items-center justify-center text-lg font-bold rounded transition-all duration-500
+                ${idx === recentDraws.length - 1 ? 'bg-coinbase-blue text-white animate-bounce' : 'bg-white text-coinbase-blue opacity-50'}`}
+            >
+              {num}
+            </div>
+          ))
+        ) : (
+          <div className="h-12 flex items-center justify-center">
+            <p className="text-sm text-gray-400">Waiting for draws...</p>
+          </div>
+        )}
+      </div>
+
       {/* Win Status */}
       {winInfo.types.length > 0 && (
-        <div className="mb-4 p-4 bg-gradient-to-r from-green-400 to-blue-500 text-white rounded-lg shadow-lg">
-          <p className="text-2xl font-bold animate-pulse mb-2">
-            🎉 {winInfo.types.join(' + ')} 
+        <div className="mb-4 p-4 bg-gradient-to-r from-green-100 to-blue-100 rounded-lg border-2 border-green-500">
+          <p className="text-2xl font-bold text-coinbase-blue animate-pulse">
+            🎉 {winInfo.types.join(' + ')} ({winInfo.count} total) ✨ Rewards Sent!
           </p>
-          <p className="text-sm opacity-90 mb-2">({winInfo.count} total wins)</p>
-          
-          <div className="bg-white/20 rounded-lg p-3">
-            <div className="text-lg font-bold mb-1">
-              ✨ Rewards Sent Automatically! ✨
-            </div>
-            <div className="text-sm opacity-90">
-              🎯 {1000 * winInfo.types.length} $BINGO tokens awarded
-            </div>
-            <div className="text-xs opacity-75 mt-1">
-              No claiming needed - instant rewards!
-            </div>
-          </div>
-          
-          {timerActive && (
-            <p className="text-xs opacity-80 mt-2">
-              🎮 Game continues! Keep playing for more wins!
-            </p>
-          )}
+          <p className="text-sm text-green-700 mt-2">
+            {1000 * winInfo.types.length} $BINGO tokens awarded automatically!
+          </p>
         </div>
       )}
 
       {/* Daily Limit Upsells */}
       {(!unlimitedToday && dailyPlays >= MAX_FREE_PLAYS) && (
-        <div className="mb-4 p-4 bg-blue-100 rounded-lg shadow-md">
-          <p className="text-coinbase-blue mb-3 font-semibold">
-            🎯 Free plays used up today! Get more:
-          </p>
+        <div className="mt-4 p-4 bg-blue-100 rounded-lg shadow-md">
+          <p className="text-coinbase-blue mb-2 font-semibold">🎯 Free plays used up today! Get more:</p>
           <div className="space-y-2">
             <button 
               onClick={shareForExtraPlay}
-              className="w-full bg-coinbase-blue text-white px-4 py-2 rounded-lg font-bold hover:bg-blue-600 transition-colors"
+              className="w-full bg-coinbase-blue text-white px-4 py-2 rounded-lg font-bold hover:bg-blue-600"
             >
               📢 Share on Farcaster (+1 Play)
             </button>
             <button 
               onClick={payForUnlimited}
-              disabled={isProcessingPayment || !address}
-              className={`w-full px-4 py-2 rounded-lg font-bold transition-colors ${
-                isProcessingPayment || !address
-                  ? 'bg-gray-400 text-gray-600 cursor-not-allowed'
-                  : 'bg-green-500 text-white hover:bg-green-600'
-              }`}
+              className="w-full bg-green-500 text-white px-4 py-2 rounded-lg font-bold hover:bg-green-600"
             >
-              {isProcessingPayment ? '⏳ Processing...' : 
-               !address ? '🔗 Connect Wallet First' :
-               '💰 Pay 50 $BINGO (Unlimited Today)'}
+              💰 Pay 50 $BINGO (Unlimited Today)
             </button>
           </div>
           {process.env.NEXT_PUBLIC_CDP_RPC && (
