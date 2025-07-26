@@ -199,39 +199,100 @@ export default function BingoCard() {
     }
   };
 
-  // Get signature from backend for win claim
-  const getWinSignature = async (address: string, winTypes: string[]) => {
+  // Analytics tracking
+  const trackEvent = async (event: string, data?: Record<string, unknown>) => {
     try {
-      const response = await fetch('/api/verify-win', {
+      await fetch('/api/analytics', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          address,
-          winTypes,
+          event,
+          player: address,
+          data,
+          sessionId: sessionStorage.getItem('gameSessionId') || `session-${Date.now()}`,
         }),
       });
-
-      if (!response.ok) {
-        throw new Error('Failed to get win signature from backend');
-      }
-
-      const data = await response.json();
-      return {
-        hash: data.hash,
-        signature: data.signature,
-      };
     } catch (error) {
-      console.error('Backend signature request failed:', error);
-      
-      // Fallback to client-side mock if backend fails
-      const winData = `${address}-${winTypes.join('-')}-${Date.now()}`;
-      const hash = keccak256(stringToHex(winData));
-      const mockSignature = '0x' + '1'.repeat(128);
-      
-      return { hash, signature: mockSignature };
+      console.error('Analytics tracking failed:', error);
     }
+  };
+
+  // Initialize session tracking
+  useEffect(() => {
+    if (!sessionStorage.getItem('gameSessionId')) {
+      sessionStorage.setItem('gameSessionId', `session-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`);
+    }
+  }, []);
+
+  // Enhanced signature generation with retry logic
+  const getWinSignature = async (address: string, winTypes: string[], retries = 3) => {
+    for (let attempt = 1; attempt <= retries; attempt++) {
+      try {
+        console.log(`Attempting win signature generation (attempt ${attempt}/${retries})`);
+        
+        const response = await fetch('/api/verify-win', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            address,
+            winTypes,
+            gameId: `game-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+          }),
+        });
+
+        if (!response.ok) {
+          const errorData = await response.json().catch(() => ({}));
+          throw new Error(errorData.error || `HTTP ${response.status}: ${response.statusText}`);
+        }
+
+        const data = await response.json();
+        
+        if (!data.success) {
+          throw new Error(data.error || 'Backend returned success: false');
+        }
+
+        console.log('✅ Win signature generated successfully');
+        await trackEvent('win_signature_generated', { 
+          winTypes, 
+          attempt,
+                     processingTime: Date.now() - ((window as { winDetectionTime?: number }).winDetectionTime || 0),
+        });
+
+        return {
+          hash: data.hash,
+          signature: data.signature,
+          winData: data.winData,
+        };
+
+      } catch (error) {
+        console.error(`Signature attempt ${attempt} failed:`, error);
+        
+        if (attempt === retries) {
+          // Final fallback - generate client-side signature
+          console.warn('⚠️  Using fallback signature generation');
+          await trackEvent('win_signature_fallback', { 
+            winTypes, 
+            attempts: retries,
+            error: error instanceof Error ? error.message : 'Unknown error',
+          });
+          
+          const winData = `${address}-${winTypes.join('-')}-${Date.now()}`;
+          const hash = keccak256(stringToHex(winData));
+          const mockSignature = '0x' + '1'.repeat(128);
+          
+          return { hash, signature: mockSignature, winData: null };
+        }
+        
+        // Wait before retry (exponential backoff)
+        await new Promise(resolve => setTimeout(resolve, 1000 * attempt));
+      }
+    }
+    
+    throw new Error('All signature generation attempts failed');
   };
 
   // Win detection and automatic claiming
@@ -255,13 +316,25 @@ export default function BingoCard() {
       
       alert(`🎉 ${newWin.types.join(' + ')}! Claiming 1000 $BINGO automatically! Share: ${shareUrl}`);
 
-              // Automatic win claiming with backend signature
+              // Enhanced automatic win claiming with monitoring
         const claimWinAutomatically = async () => {
+          const claimStartTime = Date.now();
+          
           try {
-            console.log(`Getting signature for win: ${newWin.types.join(', ')}`);
-            const { hash, signature } = await getWinSignature(address, newWin.types);
+            console.log(`🎯 Processing win: ${newWin.types.join(', ')}`);
+                         (window as { winDetectionTime?: number }).winDetectionTime = Date.now();
             
-            console.log(`Auto-claiming win for ${address} with hash: ${hash}`);
+            // Track win detection
+            await trackEvent('win_detected', {
+              winTypes: newWin.types,
+              winCount: newWin.count,
+              gameTimer,
+              markedCells: marked.size,
+            });
+            
+            const { hash, signature, winData } = await getWinSignature(address, newWin.types);
+            
+            console.log(`🔐 Claiming win with hash: ${hash.slice(0, 10)}...`);
             
             writeContract({
               address: GAME_ADDRESS,
@@ -270,11 +343,30 @@ export default function BingoCard() {
               args: [hash, signature],
             });
             
-            console.log('Win claim transaction sent!');
+            // Track successful claim initiation
+            await trackEvent('win_claim_initiated', {
+              winTypes: newWin.types,
+              hash: hash.slice(0, 10),
+              processingTime: Date.now() - claimStartTime,
+              winData,
+            });
+            
+            console.log('✅ Win claim transaction sent!');
             alert('🎉 Win claimed! 1000 $BINGO should arrive shortly!');
+            
           } catch (error) {
-            console.error('Auto-claim failed:', error);
-            alert('Win detected but auto-claim failed. Please try again or contact support.');
+            const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+            console.error('❌ Auto-claim failed:', error);
+            
+            // Track claim failure
+            await trackEvent('error_occurred', {
+              type: 'win_claim_failed',
+              winTypes: newWin.types,
+              error: errorMessage,
+              processingTime: Date.now() - claimStartTime,
+            });
+            
+            alert(`Win detected but auto-claim failed: ${errorMessage}\nPlease try again or contact support.`);
           }
         };
 
@@ -318,9 +410,16 @@ export default function BingoCard() {
     }
 
     setIsProcessingPayment(true);
+    const purchaseStartTime = Date.now();
 
     try {
-      console.log('Purchasing unlimited play with approval...');
+      console.log('💳 Purchasing unlimited play with approval...');
+      
+      // Track unlimited purchase attempt
+      await trackEvent('unlimited_purchase_started', {
+        currentPlays: dailyPlays,
+        timestamp: new Date().toISOString(),
+      });
       
       // Sequential approval then purchase
       writeContract({
@@ -344,10 +443,29 @@ export default function BingoCard() {
       const today = new Date().toISOString().split('T')[0];
       localStorage.setItem('unlimitedDate', today);
       setUnlimitedToday(true);
-      alert('Unlimited access unlocked for today with 50 $BINGO!');
+      
+      // Track successful purchase
+      await trackEvent('unlimited_purchased', {
+        processingTime: Date.now() - purchaseStartTime,
+        previousPlays: dailyPlays,
+        timestamp: new Date().toISOString(),
+      });
+      
+      alert('✅ Unlimited access unlocked for today with 50 $BINGO!');
+      console.log('✅ Unlimited purchase completed');
+      
     } catch (error) {
-      console.error('Unlimited purchase failed:', error);
-      alert('Failed to purchase unlimited access. Make sure you have 50 $BINGO tokens and enough ETH for gas.');
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      console.error('❌ Unlimited purchase failed:', error);
+      
+      // Track purchase failure
+      await trackEvent('error_occurred', {
+        type: 'unlimited_purchase_failed',
+        error: errorMessage,
+        processingTime: Date.now() - purchaseStartTime,
+      });
+      
+      alert(`Failed to purchase unlimited access: ${errorMessage}\nMake sure you have 50 $BINGO tokens and enough ETH for gas.`);
     } finally {
       setIsProcessingPayment(false);
     }
