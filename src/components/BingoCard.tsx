@@ -163,45 +163,25 @@ export default function BingoCard() {
       return;
     }
 
-    console.log('🎮 Starting new game...');
+    console.log('🎮 Starting new FREE game (no contract join required)...');
     resetGame();
     setTimerActive(true);
     startAutoDraw();
 
-    // Join game via contract if wallet connected and not unlimited
-    if (!unlimitedToday && address) {
-      try {
-        console.log('📞 Calling contract join function...');
-        await writeContracts({
-          contracts: [{ 
-            address: GAME_ADDRESS, 
-            abi: bingoGameV3ABI as any, 
-            functionName: 'join', 
-            args: [] 
-          }],
-          capabilities: process.env.NEXT_PUBLIC_CDP_RPC ? {
-            paymasterService: { url: process.env.NEXT_PUBLIC_CDP_RPC }
-          } : undefined,
-        });
-        
-        console.log('✅ Successfully joined game via contract');
-        const newPlays = dailyPlays + 1;
-        setDailyPlays(newPlays);
-        localStorage.setItem('dailyPlays', newPlays.toString());
-        
-      } catch (error: any) {
-        console.error('❌ Contract join failed:', error);
-        alert('Join failed: ' + (error.message || 'Check network or paymaster'));
-        // Continue game even if join fails
-      }
-    } else if (!address) {
-      // Demo mode - increment plays for rate limiting
+    // Update plays count - no contract interaction needed for free games
+    if (!unlimitedToday) {
       const newPlays = dailyPlays + 1;
       setDailyPlays(newPlays);
       localStorage.setItem('dailyPlays', newPlays.toString());
-      console.log('🎮 Demo game started - connect wallet for rewards!');
+      console.log('✅ Free game started - play count updated to:', newPlays);
     }
-  }, [unlimitedToday, dailyPlays, address, writeContracts, resetGame, startAutoDraw]);
+    
+    if (!address) {
+      console.log('🎮 Demo game started - connect wallet for automatic rewards!');
+    } else {
+      console.log('🎮 Free game started with wallet connected - ready for automatic rewards!');
+    }
+  }, [unlimitedToday, dailyPlays, resetGame, startAutoDraw, address]);
 
   const markCell = useCallback((row: number, col: number) => {
     const num = card[col]?.[row] ?? '';
@@ -214,6 +194,14 @@ export default function BingoCard() {
   // Enhanced win detection with comprehensive logging
   useEffect(() => {
     const newWin = checkWin(marked);
+    console.log('🔍 Win check:', { 
+      newCount: newWin.count, 
+      oldCount: winInfo.count, 
+      newTypes: newWin.types,
+      hasAddress: !!address,
+      shouldTrigger: newWin.count > winInfo.count && address && newWin.count > 0
+    });
+    
     if (newWin.count > winInfo.count && address && newWin.count > 0) {
       console.log('🎉 WIN DETECTED:', { 
         newWinCount: newWin.count, 
@@ -240,7 +228,7 @@ export default function BingoCard() {
         .replace(/\s/g, '-');
       const shareUrl = `https://basedbingo.xyz/win/${winType}`;
       
-      alert(`🎉 ${newWin.types.join(' + ')} achieved! Rewards automatically sent to your wallet! Share: ${shareUrl}`);
+      alert(`🎉 ${newWin.types.join(' + ')} achieved! Rewards being sent automatically... Share: ${shareUrl}`);
 
       // Auto-cast to Farcaster  
       try {
@@ -259,6 +247,7 @@ export default function BingoCard() {
       // CRITICAL: Auto-award wins via backend with enhanced logging
       console.log('🚀 Starting automatic reward process...');
       console.log('📡 Calling /api/award-wins with:', { address, winTypes: newWin.types });
+      console.log('🔗 API URL:', window.location.origin + '/api/award-wins');
       
       fetch('/api/award-wins', {
         method: 'POST',
@@ -266,25 +255,43 @@ export default function BingoCard() {
         body: JSON.stringify({ address, winTypes: newWin.types }),
       })
       .then(res => {
-        console.log('📨 API Response status:', res.status, res.statusText);
+        console.log('📨 API Response received:', { 
+          status: res.status, 
+          statusText: res.statusText,
+          ok: res.ok,
+          url: res.url
+        });
+        
         if (!res.ok) {
-          throw new Error(`Server error: ${res.status} ${res.statusText}`);
+          return res.text().then(text => {
+            console.error('📨 Error response body:', text);
+            throw new Error(`Server error: ${res.status} ${res.statusText} - ${text}`);
+          });
         }
         return res.json();
       })
       .then(data => {
         console.log('✅ Award API success:', data);
-        alert(`🎉 ${1000 * newWin.types.length} $BINGO automatically awarded! Tx: ${data.transactionHash?.slice(0, 10)}...`);
+        if (data.success) {
+          alert(`🎉 ${1000 * newWin.types.length} $BINGO automatically awarded! Tx: ${data.transactionHash?.slice(0, 10)}...`);
+        } else {
+          console.error('❌ API returned success: false:', data);
+          alert('🎉 Win detected! However, reward processing returned an error: ' + (data.message || 'Unknown error'));
+        }
       })
       .catch((error: any) => {
-        console.error('❌ Award API failed:', error);
+        console.error('❌ Award API failed completely:', error);
         console.error('❌ Error details:', {
           message: error.message,
           stack: error.stack,
           name: error.name
         });
-        alert('🎉 Win detected! However, automatic reward failed: ' + error.message + '. Check console for details.');
+        alert('🎉 Win detected! However, automatic reward failed: ' + error.message + '. Check console and try refreshing.');
       });
+    } else if (newWin.count > winInfo.count && !address) {
+      console.log('🎯 Win detected but no wallet connected');
+      setWinInfo(newWin);
+      alert(`🎉 ${newWin.types.join(' + ')} achieved! Connect your wallet to receive automatic $BINGO rewards!`);
     }
   }, [marked, address, winInfo.count]);
 
@@ -319,7 +326,8 @@ export default function BingoCard() {
     }
     
     try {
-      console.log('💳 Purchasing unlimited access...');
+      console.log('💳 Purchasing unlimited access with 50 $BINGO...');
+      console.log('📝 This requires: 50 $BINGO tokens + ETH for gas fees');
       
       await writeContracts({
         contracts: [
@@ -349,7 +357,23 @@ export default function BingoCard() {
       
     } catch (error: any) {
       console.error('❌ Unlimited purchase failed:', error);
-      alert('Failed to purchase unlimited access: ' + (error.message || 'Check $BINGO balance'));
+      
+      let errorMessage = 'Failed to purchase unlimited access: ';
+      
+      if (error.message?.includes('insufficient funds') || 
+          error.message?.includes('not enough') ||
+          error.message?.includes('ERC20: transfer amount exceeds balance')) {
+        errorMessage += 'You need 50 $BINGO tokens. Play games to earn tokens first, or get tokens from the faucet.';
+      } else if (error.message?.includes('User rejected') || 
+                 error.message?.includes('user denied')) {
+        errorMessage += 'Transaction was cancelled. You can try again!';
+      } else if (error.message?.includes('network')) {
+        errorMessage += 'Network error. Check your connection and try again.';
+      } else {
+        errorMessage += error.message || 'Unknown error occurred';
+      }
+      
+      alert(errorMessage);
     }
   };
 
