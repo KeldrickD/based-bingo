@@ -8,6 +8,15 @@ const CDP_RPC = process.env.NEXT_PUBLIC_CDP_RPC;
 const DEFAULT_BASE_RPC = 'https://mainnet.base.org';
 // const BACKUP_RPC = 'https://base.gateway.tenderly.co'; // Reserved for future use
 
+// Dynamic URL detection for proper WalletConnect configuration
+const getAppUrl = () => {
+  if (typeof window !== 'undefined') {
+    return window.location.origin;
+  }
+  // Fallback for SSR - both URLs work
+  return 'https://www.basedbingo.xyz';
+};
+
 // Select RPC with priority: CDP Paymaster > Default > Backup
 const getRpcUrl = () => {
   if (CDP_RPC) {
@@ -19,6 +28,7 @@ const getRpcUrl = () => {
 };
 
 const rpcUrl = getRpcUrl();
+const appUrl = getAppUrl();
 
 // Enhanced wagmi configuration with paymaster support
 export const config = createConfig({
@@ -30,7 +40,7 @@ export const config = createConfig({
     // Enhanced: Coinbase Wallet with ERC-4337 support
     coinbaseWallet({
       appName: 'Based Bingo V2',
-      appLogoUrl: 'https://basedbingo.xyz/icon.png',
+      appLogoUrl: `${appUrl}/icon.png`,
       chainId: base.id,
       preference: 'smartWalletOnly', // Enable smart wallet features
     }),
@@ -40,16 +50,17 @@ export const config = createConfig({
       target: 'metaMask',
     }),
     
-    // WalletConnect for mobile wallets
+    // WalletConnect for mobile wallets - Fixed URL configuration
     ...(process.env.NEXT_PUBLIC_WC_PROJECT_ID ? [
       walletConnect({
         projectId: process.env.NEXT_PUBLIC_WC_PROJECT_ID,
         metadata: {
           name: 'Based Bingo V2',
           description: 'On-chain Bingo game with automatic win claiming',
-          url: 'https://basedbingo.xyz',
-          icons: ['https://basedbingo.xyz/icon.png'],
+          url: appUrl, // Dynamic URL to match current domain
+          icons: [`${appUrl}/icon.png`],
         },
+        showQrModal: true,
       })
     ] : []),
   ],
@@ -80,6 +91,7 @@ export const config = createConfig({
 // Export configuration details for monitoring
 export const wagmiInfo = {
   rpcUrl,
+  appUrl,
   isPaymasterEnabled: !!CDP_RPC,
   supportedConnectors: [
     'Farcaster Mini App',
@@ -93,5 +105,6 @@ export const wagmiInfo = {
     batchRequests: true,
     ssrSupport: true,
     sessionPersistence: true,
+    dynamicUrlHandling: true,
   },
 }; 
