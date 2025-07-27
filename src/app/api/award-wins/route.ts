@@ -40,9 +40,65 @@ const bingoGameV3ABI = [
 const GAME_ADDRESS = '0x4CE879376Dc50aBB1Eb8F236B76e8e5a724780Be';
 const BASE_RPC_URL = 'https://mainnet.base.org';
 
+// Health check endpoint
+export async function GET() {
+  console.log('🏥 Award-wins health check called');
+  
+  try {
+    const hasOwnerKey = !!process.env.OWNER_PRIVATE_KEY;
+    const ownerKeyLength = process.env.OWNER_PRIVATE_KEY?.length;
+    
+    let ownerAddress = 'Not available';
+    let networkStatus = 'Not tested';
+    let balanceInfo = 'Not checked';
+    
+    if (hasOwnerKey) {
+      try {
+        const provider = new ethers.JsonRpcProvider(BASE_RPC_URL);
+        const signer = new ethers.Wallet(process.env.OWNER_PRIVATE_KEY!, provider);
+        ownerAddress = signer.address;
+        
+        const balance = await provider.getBalance(signer.address);
+        const balanceEth = ethers.formatEther(balance);
+        balanceInfo = `${balanceEth} ETH`;
+        networkStatus = 'Connected';
+      } catch (error: any) {
+        networkStatus = `Error: ${error.message}`;
+      }
+    }
+    
+    return NextResponse.json({
+      status: 'healthy',
+      environment: {
+        NODE_ENV: process.env.NODE_ENV,
+        hasOwnerPrivateKey: hasOwnerKey,
+        ownerKeyLength: ownerKeyLength ? `${ownerKeyLength} characters` : 'Not set',
+        ownerAddress,
+        networkStatus,
+        ownerBalance: balanceInfo,
+        gameContractAddress: GAME_ADDRESS,
+        rpcUrl: BASE_RPC_URL
+      },
+      timestamp: new Date().toISOString()
+    });
+  } catch (error: any) {
+    return NextResponse.json({
+      status: 'unhealthy',
+      error: error.message,
+      timestamp: new Date().toISOString()
+    }, { status: 500 });
+  }
+}
+
 export async function POST(request: NextRequest) {
   const startTime = Date.now();
   console.log('🚀 Award-wins API called at:', new Date().toISOString());
+  console.log('🌍 Environment check:', {
+    NODE_ENV: process.env.NODE_ENV,
+    hasOwnerKey: !!process.env.OWNER_PRIVATE_KEY,
+    baseRpcUrl: BASE_RPC_URL,
+    gameAddress: GAME_ADDRESS
+  });
   
   try {
     // Parse and validate request body
@@ -94,27 +150,40 @@ export async function POST(request: NextRequest) {
     console.log('👛 Owner wallet address:', signer.address);
     
     // Verify network connection and get owner balance
-    const network = await provider.getNetwork();
-    const balance = await provider.getBalance(signer.address);
-    const balanceEth = ethers.formatEther(balance);
-    
-    console.log('🌍 Network info:', {
-      chainId: network.chainId.toString(),
-      name: network.name,
-      ownerBalance: `${balanceEth} ETH`
-    });
-    
-    if (balance < ethers.parseEther('0.001')) {
-      console.error('❌ CRITICAL: Owner wallet has insufficient ETH for gas:', balanceEth, 'ETH');
+    try {
+      const network = await provider.getNetwork();
+      const balance = await provider.getBalance(signer.address);
+      const balanceEth = ethers.formatEther(balance);
+      
+      console.log('🌐 Network connection verified:', {
+        chainId: network.chainId.toString(),
+        name: network.name,
+        ownerBalance: `${balanceEth} ETH`,
+        balanceWei: balance.toString()
+      });
+
+      if (parseFloat(balanceEth) < 0.001) {
+        console.error('❌ CRITICAL: Owner wallet has insufficient ETH for gas!');
+        return NextResponse.json(
+          { success: false, message: `Owner wallet low on ETH: ${balanceEth} ETH (need ~0.001+ ETH for gas)` },
+          { status: 500 }
+        );
+      }
+    } catch (networkError: any) {
+      console.error('❌ Network connection failed:', networkError);
       return NextResponse.json(
-        { success: false, message: 'Server error: insufficient gas funds in owner wallet' },
-        { status: 500 }
+        { success: false, message: 'Network connection failed: ' + networkError.message },
+        { status: 503 }
       );
     }
     
     // Create contract instance
-    console.log('📝 Creating contract instance...');
+    console.log('📋 Creating contract instance...');
     const contract = new ethers.Contract(GAME_ADDRESS, bingoGameV3ABI, signer);
+    console.log('📋 Contract instance created:', {
+      address: contract.target,
+      hasAwardWins: typeof contract.awardWins === 'function'
+    });
     
     // Verify contract owner (optional debugging step)
     try {

@@ -248,34 +248,60 @@ export default function BingoCard() {
       console.log('🚀 Starting automatic reward process...');
       console.log('📡 Calling /api/award-wins with:', { address, winTypes: newWin.types });
       console.log('🔗 API URL:', window.location.origin + '/api/award-wins');
+      console.log('🌐 Current origin:', window.location.origin);
+      console.log('🕐 Request timestamp:', new Date().toISOString());
+      
+      const requestPayload = { address, winTypes: newWin.types };
+      console.log('📦 Request payload:', JSON.stringify(requestPayload, null, 2));
       
       fetch('/api/award-wins', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ address, winTypes: newWin.types }),
+        body: JSON.stringify(requestPayload),
       })
       .then(res => {
         console.log('📨 API Response received:', { 
           status: res.status, 
           statusText: res.statusText,
           ok: res.ok,
-          url: res.url
+          url: res.url,
+          headers: Object.fromEntries(res.headers.entries())
         });
         
         if (!res.ok) {
           return res.text().then(text => {
             console.error('📨 Error response body:', text);
+            console.error('📨 Full error details:', {
+              status: res.status,
+              statusText: res.statusText,
+              body: text,
+              url: res.url
+            });
             throw new Error(`Server error: ${res.status} ${res.statusText} - ${text}`);
           });
         }
         return res.json();
       })
       .then(data => {
-        console.log('✅ Award API success:', data);
+        console.log('✅ Award API success response:', JSON.stringify(data, null, 2));
         if (data.success) {
+          console.log('🎉 SUCCESS: Tokens awarded successfully!');
+          console.log('💰 Reward details:', {
+            totalRewards: data.totalRewards || (1000 * newWin.types.length),
+            transactionHash: data.transactionHash,
+            blockNumber: data.blockNumber,
+            gasUsed: data.gasUsed,
+            processingTime: data.processingTimeMs
+          });
           alert(`🎉 ${1000 * newWin.types.length} $BINGO automatically awarded! Tx: ${data.transactionHash?.slice(0, 10)}...`);
         } else {
           console.error('❌ API returned success: false:', data);
+          console.error('❌ Failure details:', {
+            message: data.message,
+            errorCode: data.errorCode,
+            errorReason: data.errorReason,
+            details: data.details
+          });
           alert('🎉 Win detected! However, reward processing returned an error: ' + (data.message || 'Unknown error'));
         }
       })
@@ -284,7 +310,13 @@ export default function BingoCard() {
         console.error('❌ Error details:', {
           message: error.message,
           stack: error.stack,
-          name: error.name
+          name: error.name,
+          cause: error.cause
+        });
+        console.error('❌ Network info:', {
+          userAgent: navigator.userAgent,
+          onLine: navigator.onLine,
+          cookieEnabled: navigator.cookieEnabled
         });
         alert('🎉 Win detected! However, automatic reward failed: ' + error.message + '. Check console and try refreshing.');
       });
