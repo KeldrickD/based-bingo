@@ -199,7 +199,10 @@ export default function BingoCard() {
       oldCount: winInfo.count, 
       newTypes: newWin.types,
       hasAddress: !!address,
-      shouldTrigger: newWin.count > winInfo.count && address && newWin.count > 0
+      shouldTrigger: newWin.count > winInfo.count && address && newWin.count > 0,
+      isMobile: /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent),
+      isInWallet: !!window.ethereum,
+      userAgent: navigator.userAgent.substring(0, 100)
     });
     
     if (newWin.count > winInfo.count && address && newWin.count > 0) {
@@ -208,43 +211,70 @@ export default function BingoCard() {
         previousWinCount: winInfo.count,
         winTypes: newWin.types,
         address: `${address.slice(0, 6)}...${address.slice(-4)}`,
-        timestamp: new Date().toISOString()
+        timestamp: new Date().toISOString(),
+        environment: {
+          isMobile: /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent),
+          isCoinbaseWallet: navigator.userAgent.includes('CoinbaseWallet'),
+          hasEthereum: !!window.ethereum,
+          origin: window.location.origin
+        }
       });
       
       setWinInfo(newWin);
       
-      // Generate win image
-      if (gridRef.current) {
+      // Generate win image (skip on mobile if causing issues)
+      if (gridRef.current && !(/Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent))) {
         toPng(gridRef.current).then((dataUrl) => {
           console.log('📸 Win image generated:', dataUrl.length, 'bytes');
         }).catch((error: any) => {
-          console.error('Win image generation failed:', error);
+          console.error('Win image generation failed (non-critical):', error);
         });
+      } else {
+        console.log('📸 Skipping win image generation on mobile');
       }
 
       const winType = newWin.types[newWin.types.length - 1]
         .toLowerCase()
         .replace(/!/g, '')
         .replace(/\s/g, '-');
-      const shareUrl = `https://basedbingo.xyz/win/${winType}`;
+      const shareUrl = `https://www.basedbingo.xyz/win/${winType}`;
       
-      alert(`🎉 ${newWin.types.join(' + ')} achieved! Rewards being sent automatically... Share: ${shareUrl}`);
+      // Show immediate win notification
+      const rewardAmount = 1000 * newWin.types.length;
+      alert(`🎉 ${newWin.types.join(' + ')} achieved! Sending ${rewardAmount} $BINGO automatically...`);
 
-      // Auto-cast to Farcaster  
+      // Store win for fallback claiming if API fails
+      const winRecord = {
+        timestamp: Date.now(),
+        address,
+        winTypes: newWin.types,
+        claimed: false
+      };
+      
+      try {
+        const pendingWins = JSON.parse(localStorage.getItem('pendingWins') || '[]');
+        pendingWins.push(winRecord);
+        localStorage.setItem('pendingWins', JSON.stringify(pendingWins));
+        console.log('💾 Win stored locally for fallback claiming');
+      } catch (error) {
+        console.error('Failed to store win locally:', error);
+      }
+
+      // Auto-cast to Farcaster (skip if not available)
       try {
         if ('actions' in sdk && 'cast' in (sdk as any).actions) {
           (sdk as any).actions.cast({
-            text: `Just got ${newWin.types.join(' + ')} in Based Bingo! Won ${1000 * newWin.types.length} $BINGO—play now!`,
+            text: `Just got ${newWin.types.join(' + ')} in Based Bingo! Won ${rewardAmount} $BINGO—play now!`,
             embeds: [{ url: shareUrl }],
-          }).catch((error: any) => console.error('Farcaster cast failed:', error));
+          }).catch((error: any) => console.error('Farcaster cast failed (non-critical):', error));
         } else {
           console.log('Farcaster cast not available in this environment');
         }
       } catch (error: any) {
-        console.error('Farcaster SDK error:', error);
+        console.error('Farcaster SDK error (non-critical):', error);
       }
 
-      // CRITICAL: Auto-award wins via backend with enhanced logging
+      // CRITICAL: Auto-award wins via backend with enhanced logging and retry mechanism
       console.log('🚀 Starting automatic reward process...');
       console.log('📡 Calling /api/award-wins with:', { address, winTypes: newWin.types });
       console.log('🔗 API URL:', window.location.origin + '/api/award-wins');
@@ -254,72 +284,105 @@ export default function BingoCard() {
       const requestPayload = { address, winTypes: newWin.types };
       console.log('📦 Request payload:', JSON.stringify(requestPayload, null, 2));
       
-      fetch('/api/award-wins', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(requestPayload),
-      })
-      .then(res => {
-        console.log('📨 API Response received:', { 
-          status: res.status, 
-          statusText: res.statusText,
-          ok: res.ok,
-          url: res.url,
-          headers: Object.fromEntries(res.headers.entries())
-        });
+      // Retry mechanism for mobile/wallet environments
+      const attemptReward = async (attempt = 1, maxAttempts = 3) => {
+        console.log(`🔄 Reward attempt ${attempt}/${maxAttempts}`);
         
-        if (!res.ok) {
-          return res.text().then(text => {
+        try {
+          const response = await fetch('/api/award-wins', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(requestPayload),
+          });
+
+          console.log('📨 API Response received:', { 
+            status: response.status, 
+            statusText: response.statusText,
+            ok: response.ok,
+            url: response.url,
+            headers: Object.fromEntries(response.headers.entries()),
+            attempt
+          });
+          
+          if (!response.ok) {
+            const text = await response.text();
             console.error('📨 Error response body:', text);
             console.error('📨 Full error details:', {
-              status: res.status,
-              statusText: res.statusText,
+              status: response.status,
+              statusText: response.statusText,
               body: text,
-              url: res.url
+              url: response.url,
+              attempt
             });
-            throw new Error(`Server error: ${res.status} ${res.statusText} - ${text}`);
-          });
+            throw new Error(`Server error: ${response.status} ${response.statusText} - ${text}`);
+          }
+          
+          const data = await response.json();
+          console.log('✅ Award API success response:', JSON.stringify(data, null, 2));
+          
+          if (data.success) {
+            console.log('🎉 SUCCESS: Tokens awarded successfully!');
+            console.log('💰 Reward details:', {
+              totalRewards: data.totalRewards || rewardAmount,
+              transactionHash: data.transactionHash,
+              blockNumber: data.blockNumber,
+              gasUsed: data.gasUsed,
+              processingTime: data.processingTimeMs,
+              attempt
+            });
+            
+            // Mark win as claimed in localStorage
+            try {
+              const pendingWins = JSON.parse(localStorage.getItem('pendingWins') || '[]');
+              const updatedWins = pendingWins.map((win: any) => 
+                win.timestamp === winRecord.timestamp ? { ...win, claimed: true, txHash: data.transactionHash } : win
+              );
+              localStorage.setItem('pendingWins', JSON.stringify(updatedWins));
+            } catch (error) {
+              console.error('Failed to update win status:', error);
+            }
+            
+            alert(`🎉 ${rewardAmount} $BINGO automatically awarded! Tx: ${data.transactionHash?.slice(0, 10)}...`);
+            return true;
+          } else {
+            console.error('❌ API returned success: false:', data);
+            console.error('❌ Failure details:', {
+              message: data.message,
+              errorCode: data.errorCode,
+              errorReason: data.errorReason,
+              details: data.details,
+              attempt
+            });
+            throw new Error(data.message || 'Unknown server error');
+          }
+        } catch (error: any) {
+          console.error(`❌ Reward attempt ${attempt} failed:`, error);
+          
+          if (attempt < maxAttempts) {
+            console.log(`🔄 Retrying in ${attempt * 2} seconds...`);
+            await new Promise(resolve => setTimeout(resolve, attempt * 2000));
+            return attemptReward(attempt + 1, maxAttempts);
+          } else {
+            console.error('❌ All reward attempts failed:', {
+              message: error.message,
+              stack: error.stack,
+              name: error.name,
+              cause: error.cause,
+              finalAttempt: attempt
+            });
+            console.error('❌ Network info:', {
+              userAgent: navigator.userAgent,
+              onLine: navigator.onLine,
+              cookieEnabled: navigator.cookieEnabled
+            });
+            alert(`🎉 Win detected! However, automatic reward failed after ${maxAttempts} attempts: ${error.message}. Your win has been saved and you can claim it manually later.`);
+            return false;
+          }
         }
-        return res.json();
-      })
-      .then(data => {
-        console.log('✅ Award API success response:', JSON.stringify(data, null, 2));
-        if (data.success) {
-          console.log('🎉 SUCCESS: Tokens awarded successfully!');
-          console.log('💰 Reward details:', {
-            totalRewards: data.totalRewards || (1000 * newWin.types.length),
-            transactionHash: data.transactionHash,
-            blockNumber: data.blockNumber,
-            gasUsed: data.gasUsed,
-            processingTime: data.processingTimeMs
-          });
-          alert(`🎉 ${1000 * newWin.types.length} $BINGO automatically awarded! Tx: ${data.transactionHash?.slice(0, 10)}...`);
-        } else {
-          console.error('❌ API returned success: false:', data);
-          console.error('❌ Failure details:', {
-            message: data.message,
-            errorCode: data.errorCode,
-            errorReason: data.errorReason,
-            details: data.details
-          });
-          alert('🎉 Win detected! However, reward processing returned an error: ' + (data.message || 'Unknown error'));
-        }
-      })
-      .catch((error: any) => {
-        console.error('❌ Award API failed completely:', error);
-        console.error('❌ Error details:', {
-          message: error.message,
-          stack: error.stack,
-          name: error.name,
-          cause: error.cause
-        });
-        console.error('❌ Network info:', {
-          userAgent: navigator.userAgent,
-          onLine: navigator.onLine,
-          cookieEnabled: navigator.cookieEnabled
-        });
-        alert('🎉 Win detected! However, automatic reward failed: ' + error.message + '. Check console and try refreshing.');
-      });
+      };
+      
+      // Start the reward process
+      attemptReward();
     } else if (newWin.count > winInfo.count && !address) {
       console.log('🎯 Win detected but no wallet connected');
       setWinInfo(newWin);
@@ -416,6 +479,76 @@ export default function BingoCard() {
     }
   };
 
+  // Manual claim for failed automatic rewards
+  const claimPendingWins = async () => {
+    try {
+      const pendingWins = JSON.parse(localStorage.getItem('pendingWins') || '[]');
+      const unclaimedWins = pendingWins.filter((win: any) => !win.claimed && win.address === address);
+      
+      if (unclaimedWins.length === 0) {
+        alert('No pending wins to claim!');
+        return;
+      }
+      
+      console.log('🔄 Manual claim started for wins:', unclaimedWins);
+      let successCount = 0;
+      
+      for (const win of unclaimedWins) {
+        try {
+          console.log('📡 Manual claiming win:', win);
+          const response = await fetch('/api/award-wins', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ address: win.address, winTypes: win.winTypes }),
+          });
+          
+          if (response.ok) {
+            const data = await response.json();
+            if (data.success) {
+              // Mark as claimed
+              win.claimed = true;
+              win.txHash = data.transactionHash;
+              win.manualClaim = true;
+              successCount++;
+              console.log('✅ Manual claim successful:', data);
+            }
+          }
+        } catch (error) {
+          console.error('❌ Manual claim failed for win:', win, error);
+        }
+      }
+      
+      // Update localStorage
+      localStorage.setItem('pendingWins', JSON.stringify(pendingWins));
+      
+      if (successCount > 0) {
+        const totalRewards = successCount * 1000;
+        alert(`🎉 Successfully claimed ${successCount} wins for ${totalRewards} $BINGO!`);
+      } else {
+        alert('❌ Failed to claim any pending wins. Please try again later.');
+      }
+      
+    } catch (error: any) {
+      console.error('❌ Manual claim process failed:', error);
+      alert('❌ Failed to check pending wins: ' + error.message);
+    }
+  };
+
+  // Check for pending wins on mount
+  useEffect(() => {
+    if (address) {
+      try {
+        const pendingWins = JSON.parse(localStorage.getItem('pendingWins') || '[]');
+        const unclaimedWins = pendingWins.filter((win: any) => !win.claimed && win.address === address);
+        if (unclaimedWins.length > 0) {
+          console.log('⚠️ Found pending unclaimed wins:', unclaimedWins.length);
+        }
+      } catch (error) {
+        console.error('Failed to check pending wins:', error);
+      }
+    }
+  }, [address]);
+
   return (
     <div className="text-center max-w-sm mx-auto">
       {/* Wallet Connection */}
@@ -474,14 +607,27 @@ export default function BingoCard() {
       </div>
 
       {/* Game Controls */}
-      <div className="flex justify-center gap-4 mb-2">
-        <button 
+      <div className="flex flex-col gap-2 mb-4">
+        <button
           onClick={startGame}
           disabled={!unlimitedToday && dailyPlays >= MAX_FREE_PLAYS}
-          className="bg-gray-500 text-white px-6 py-2 rounded-lg font-bold hover:bg-gray-600 disabled:bg-gray-400 disabled:cursor-not-allowed"
+          className={`px-6 py-3 rounded-lg font-bold text-white transition-colors ${
+            !unlimitedToday && dailyPlays >= MAX_FREE_PLAYS
+              ? 'bg-gray-400 cursor-not-allowed'
+              : 'bg-coinbase-blue hover:bg-blue-600'
+          }`}
         >
-          🎮 New Game ({unlimitedToday ? 'Unlimited' : `${MAX_FREE_PLAYS - dailyPlays} left`})
+          {!unlimitedToday && dailyPlays >= MAX_FREE_PLAYS ? 'Daily Plays Used' : 'New Game'}
         </button>
+        
+        {address && (
+          <button
+            onClick={claimPendingWins}
+            className="px-4 py-2 bg-yellow-500 hover:bg-yellow-600 text-white rounded-lg font-medium text-sm transition-colors"
+          >
+            Claim Pending Rewards
+          </button>
+        )}
       </div>
 
       {/* Recent Draws */}
