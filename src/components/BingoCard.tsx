@@ -1,12 +1,32 @@
 'use client';
 
-import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { sdk } from '@farcaster/miniapp-sdk';
+import { useState, useEffect, useCallback, useRef } from 'react';
+import { useAccount, useWriteContract } from 'wagmi';
 import { toPng } from 'html-to-image';
-import { useAccount } from 'wagmi';
-import { useWriteContracts } from 'wagmi/experimental';
+import { sdk } from '@farcaster/frame-sdk';
 import basedBingoABI from '@/abis/BasedBingo.json';
 import bingoGameV3ABI from '@/abis/BingoGameV3.json';
+
+// Toast notification component
+const Toast = ({ message, type, onClose }: { message: string; type: 'success' | 'error' | 'info'; onClose: () => void }) => {
+  useEffect(() => {
+    const timer = setTimeout(onClose, 5000);
+    return () => clearTimeout(timer);
+  }, [onClose]);
+
+  const bgColor = type === 'success' ? 'bg-green-500' : type === 'error' ? 'bg-red-500' : 'bg-blue-500';
+
+  return (
+    <div className={`fixed top-4 right-4 ${bgColor} text-white px-6 py-3 rounded-lg shadow-lg z-50 max-w-sm`}>
+      <div className="flex justify-between items-center">
+        <span className="text-sm font-medium">{message}</span>
+        <button onClick={onClose} className="ml-2 text-white hover:text-gray-200">
+          ✕
+        </button>
+      </div>
+    </div>
+  );
+};
 
 const TOKEN_ADDRESS = '0xd5D90dF16CA7b11Ad852e3Bf93c0b9b774CEc047' as `0x${string}`;
 const GAME_ADDRESS = '0x4CE879376Dc50aBB1Eb8F236B76e8e5a724780Be' as `0x${string}`;
@@ -56,7 +76,7 @@ const checkWin = (marked: Set<string>) => {
 
 export default function BingoCard() {
   const { address } = useAccount();
-  const { writeContracts } = useWriteContracts();
+  const { writeContract } = useWriteContract();
   
   // Game state
   const [card, setCard] = useState<(number | string)[][]>([]);
@@ -64,16 +84,18 @@ export default function BingoCard() {
   const [currentNumber, setCurrentNumber] = useState<number | null>(null);
   const [drawnNumbers, setDrawnNumbers] = useState<Set<number>>(new Set());
   const [recentDraws, setRecentDraws] = useState<number[]>([]);
-  const [winInfo, setWinInfo] = useState<{ count: number; types: string[] }>({ count: 0, types: [] });
+  const [winInfo, setWinInfo] = useState({ count: 0, types: [] as string[] });
+  const [shareUrl, setShareUrl] = useState('');
+  const [unlimitedToday, setUnlimitedToday] = useState(false);
+  const [dailyPlays, setDailyPlays] = useState(0);
+  const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' | 'info' } | null>(null);
   const [gameTimer, setGameTimer] = useState(120);
   const [timerActive, setTimerActive] = useState(false);
   const [autoDrawInterval, setAutoDrawInterval] = useState<NodeJS.Timeout | null>(null);
   const gridRef = useRef<HTMLDivElement>(null);
   
   // Daily limits state
-  const [dailyPlays, setDailyPlays] = useState(0);
   const [lastPlayDate, setLastPlayDate] = useState('');
-  const [unlimitedToday, setUnlimitedToday] = useState(false);
   const MAX_FREE_PLAYS = 3;
 
   // Initialize daily limits
@@ -222,6 +244,10 @@ export default function BingoCard() {
       
       setWinInfo(newWin);
       
+      // Show immediate win notification with toast
+      const rewardAmount = 1000 * newWin.types.length;
+      showToast(`🎉 ${newWin.types.join(' + ')} achieved! Sending ${rewardAmount} $BINGO...`, 'info');
+
       // Generate win image (skip on mobile if causing issues)
       if (gridRef.current && !(/Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent))) {
         toPng(gridRef.current).then((dataUrl) => {
@@ -238,27 +264,6 @@ export default function BingoCard() {
         .replace(/!/g, '')
         .replace(/\s/g, '-');
       const shareUrl = `https://www.basedbingo.xyz/win/${winType}`;
-      
-      // Show immediate win notification
-      const rewardAmount = 1000 * newWin.types.length;
-      alert(`🎉 ${newWin.types.join(' + ')} achieved! Sending ${rewardAmount} $BINGO automatically...`);
-
-      // Store win for fallback claiming if API fails
-      const winRecord = {
-        timestamp: Date.now(),
-        address,
-        winTypes: newWin.types,
-        claimed: false
-      };
-      
-      try {
-        const pendingWins = JSON.parse(localStorage.getItem('pendingWins') || '[]');
-        pendingWins.push(winRecord);
-        localStorage.setItem('pendingWins', JSON.stringify(pendingWins));
-        console.log('💾 Win stored locally for fallback claiming');
-      } catch (error) {
-        console.error('Failed to store win locally:', error);
-      }
 
       // Auto-cast to Farcaster (skip if not available)
       try {
@@ -274,8 +279,8 @@ export default function BingoCard() {
         console.error('Farcaster SDK error (non-critical):', error);
       }
 
-      // CRITICAL: Auto-award wins via backend with enhanced logging and retry mechanism
-      console.log('🚀 Starting automatic reward process...');
+      // CRITICAL: Force automatic rewards with aggressive retry mechanism
+      console.log('🚀 FORCING automatic reward transaction...');
       console.log('📡 Calling /api/award-wins with:', { address, winTypes: newWin.types });
       console.log('🔗 API URL:', window.location.origin + '/api/award-wins');
       console.log('🌐 Current origin:', window.location.origin);
@@ -284,16 +289,31 @@ export default function BingoCard() {
       const requestPayload = { address, winTypes: newWin.types };
       console.log('📦 Request payload:', JSON.stringify(requestPayload, null, 2));
       
-      // Retry mechanism for mobile/wallet environments
-      const attemptReward = async (attempt = 1, maxAttempts = 3) => {
-        console.log(`🔄 Reward attempt ${attempt}/${maxAttempts}`);
+      // Aggressive retry mechanism with longer delays and more attempts
+      const forceRewardTransaction = async (attempt = 1, maxAttempts = 5) => {
+        console.log(`💪 FORCING reward transaction - attempt ${attempt}/${maxAttempts}`);
         
         try {
+          // Show progress toast for attempts after the first
+          if (attempt > 1) {
+            showToast(`🔄 Retrying reward transaction (${attempt}/${maxAttempts})...`, 'info');
+          }
+
+          const controller = new AbortController();
+          const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 second timeout
+
           const response = await fetch('/api/award-wins', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 
+              'Content-Type': 'application/json',
+              'Cache-Control': 'no-cache',
+              'X-Attempt': attempt.toString()
+            },
             body: JSON.stringify(requestPayload),
+            signal: controller.signal
           });
+
+          clearTimeout(timeoutId);
 
           console.log('📨 API Response received:', { 
             status: response.status, 
@@ -321,7 +341,7 @@ export default function BingoCard() {
           console.log('✅ Award API success response:', JSON.stringify(data, null, 2));
           
           if (data.success) {
-            console.log('🎉 SUCCESS: Tokens awarded successfully!');
+            console.log('🎉 SUCCESS: Tokens FORCED successfully!');
             console.log('💰 Reward details:', {
               totalRewards: data.totalRewards || rewardAmount,
               transactionHash: data.transactionHash,
@@ -331,18 +351,7 @@ export default function BingoCard() {
               attempt
             });
             
-            // Mark win as claimed in localStorage
-            try {
-              const pendingWins = JSON.parse(localStorage.getItem('pendingWins') || '[]');
-              const updatedWins = pendingWins.map((win: any) => 
-                win.timestamp === winRecord.timestamp ? { ...win, claimed: true, txHash: data.transactionHash } : win
-              );
-              localStorage.setItem('pendingWins', JSON.stringify(updatedWins));
-            } catch (error) {
-              console.error('Failed to update win status:', error);
-            }
-            
-            alert(`🎉 ${rewardAmount} $BINGO automatically awarded! Tx: ${data.transactionHash?.slice(0, 10)}...`);
+            showToast(`🎉 ${rewardAmount} $BINGO awarded! Tx: ${data.transactionHash?.slice(0, 10)}...`, 'success');
             return true;
           } else {
             console.error('❌ API returned success: false:', data);
@@ -358,12 +367,18 @@ export default function BingoCard() {
         } catch (error: any) {
           console.error(`❌ Reward attempt ${attempt} failed:`, error);
           
+          if (error.name === 'AbortError') {
+            console.error('❌ Request timed out after 30 seconds');
+          }
+          
           if (attempt < maxAttempts) {
-            console.log(`🔄 Retrying in ${attempt * 2} seconds...`);
-            await new Promise(resolve => setTimeout(resolve, attempt * 2000));
-            return attemptReward(attempt + 1, maxAttempts);
+            const delay = Math.min(attempt * 3000, 10000); // 3s, 6s, 9s, max 10s
+            console.log(`🔄 Retrying in ${delay/1000} seconds...`);
+            showToast(`⏳ Attempt ${attempt} failed, retrying in ${delay/1000}s...`, 'info');
+            await new Promise(resolve => setTimeout(resolve, delay));
+            return forceRewardTransaction(attempt + 1, maxAttempts);
           } else {
-            console.error('❌ All reward attempts failed:', {
+            console.error('❌ ALL REWARD ATTEMPTS FAILED:', {
               message: error.message,
               stack: error.stack,
               name: error.name,
@@ -375,14 +390,15 @@ export default function BingoCard() {
               onLine: navigator.onLine,
               cookieEnabled: navigator.cookieEnabled
             });
-            alert(`🎉 Win detected! However, automatic reward failed after ${maxAttempts} attempts: ${error.message}. Your win has been saved and you can claim it manually later.`);
+            
+            showToast(`❌ Failed to send rewards after ${maxAttempts} attempts. Contact support!`, 'error');
             return false;
           }
         }
       };
       
-      // Start the reward process
-      attemptReward();
+      // Start the aggressive reward process
+      forceRewardTransaction();
     } else if (newWin.count > winInfo.count && !address) {
       console.log('🎯 Win detected but no wallet connected');
       setWinInfo(newWin);
@@ -416,7 +432,7 @@ export default function BingoCard() {
 
   const payForUnlimited = async () => {
     if (!address) {
-      alert('Please connect your wallet first.');
+      showToast('Please connect your wallet first.', 'error');
       return;
     }
     
@@ -424,28 +440,26 @@ export default function BingoCard() {
       console.log('💳 Purchasing unlimited access with 50 $BINGO...');
       console.log('📝 This requires: 50 $BINGO tokens + ETH for gas fees');
       
-      const txResult = await writeContracts({
-        contracts: [
-          { 
-            address: TOKEN_ADDRESS, 
-            abi: basedBingoABI as any, 
-            functionName: 'approve', 
-            args: [GAME_ADDRESS, BigInt(50 * Math.pow(10, 18))]
-          },
-          { 
-            address: GAME_ADDRESS, 
-            abi: bingoGameV3ABI as any, 
-            functionName: 'buyUnlimited', 
-            args: [] 
-          },
-        ],
-        capabilities: process.env.NEXT_PUBLIC_CDP_RPC ? {
-          paymasterService: { url: process.env.NEXT_PUBLIC_CDP_RPC }
-        } : undefined,
+      // First approve the tokens
+      await writeContract({
+        address: TOKEN_ADDRESS,
+        abi: basedBingoABI as any,
+        functionName: 'approve',
+        args: [GAME_ADDRESS, BigInt(50 * Math.pow(10, 18))]
+      });
+
+      // Wait for approval
+      await new Promise(resolve => setTimeout(resolve, 3000));
+
+      // Then buy unlimited
+      await writeContract({
+        address: GAME_ADDRESS,
+        abi: bingoGameV3ABI as any,
+        functionName: 'buyUnlimited',
+        args: []
       });
 
       console.log('⏳ Transaction submitted, waiting for confirmation...');
-      console.log('📋 Transaction hash:', txResult);
       
       // Wait a moment for transaction to be processed
       await new Promise(resolve => setTimeout(resolve, 2000));
@@ -454,7 +468,7 @@ export default function BingoCard() {
       const today = new Date().toISOString().split('T')[0];
       localStorage.setItem('unlimitedDate', today);
       setUnlimitedToday(true);
-      alert('✅ Unlimited access unlocked for today with 50 $BINGO!');
+      showToast('✅ Unlimited access unlocked for today with 50 $BINGO!', 'success');
       console.log('✅ Unlimited purchase completed - localStorage updated');
       
     } catch (error: any) {
@@ -475,100 +489,39 @@ export default function BingoCard() {
         errorMessage += error.message || 'Unknown error occurred';
       }
       
-      alert(errorMessage);
+      showToast(errorMessage, 'error');
     }
   };
 
-  // Manual claim for failed automatic rewards
-  const claimPendingWins = async () => {
-    try {
-      const pendingWins = JSON.parse(localStorage.getItem('pendingWins') || '[]');
-      const unclaimedWins = pendingWins.filter((win: any) => !win.claimed && win.address === address);
-      
-      if (unclaimedWins.length === 0) {
-        alert('No pending wins to claim!');
-        return;
-      }
-      
-      console.log('🔄 Manual claim started for wins:', unclaimedWins);
-      let successCount = 0;
-      
-      for (const win of unclaimedWins) {
-        try {
-          console.log('📡 Manual claiming win:', win);
-          const response = await fetch('/api/award-wins', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ address: win.address, winTypes: win.winTypes }),
-          });
-          
-          if (response.ok) {
-            const data = await response.json();
-            if (data.success) {
-              // Mark as claimed
-              win.claimed = true;
-              win.txHash = data.transactionHash;
-              win.manualClaim = true;
-              successCount++;
-              console.log('✅ Manual claim successful:', data);
-            }
-          }
-        } catch (error) {
-          console.error('❌ Manual claim failed for win:', win, error);
-        }
-      }
-      
-      // Update localStorage
-      localStorage.setItem('pendingWins', JSON.stringify(pendingWins));
-      
-      if (successCount > 0) {
-        const totalRewards = successCount * 1000;
-        alert(`🎉 Successfully claimed ${successCount} wins for ${totalRewards} $BINGO!`);
-      } else {
-        alert('❌ Failed to claim any pending wins. Please try again later.');
-      }
-      
-    } catch (error: any) {
-      console.error('❌ Manual claim process failed:', error);
-      alert('❌ Failed to check pending wins: ' + error.message);
-    }
+  const showToast = (message: string, type: 'success' | 'error' | 'info') => {
+    setToast({ message, type });
   };
 
-  // Check for pending wins on mount
-  useEffect(() => {
-    if (address) {
-      try {
-        const pendingWins = JSON.parse(localStorage.getItem('pendingWins') || '[]');
-        const unclaimedWins = pendingWins.filter((win: any) => !win.claimed && win.address === address);
-        if (unclaimedWins.length > 0) {
-          console.log('⚠️ Found pending unclaimed wins:', unclaimedWins.length);
-        }
-      } catch (error) {
-        console.error('Failed to check pending wins:', error);
-      }
-    }
-  }, [address]);
+  const closeToast = () => {
+    setToast(null);
+  };
 
   return (
-    <div className="text-center max-w-sm mx-auto">
-      {/* Wallet Connection */}
-      {!address ? (
-        <div className="mb-4 p-3 bg-blue-50 rounded-lg">
-          <button className="w-full bg-coinbase-blue text-white px-6 py-2 rounded-lg font-bold hover:bg-blue-600 mb-2">
-            Connect Wallet (for $BINGO)
-          </button>
-          <p className="text-xs text-blue-700">Connect for automatic rewards</p>
-        </div>
-      ) : (
-        <div className="mb-4 p-2 bg-green-50 rounded-lg">
-          <p className="text-sm text-coinbase-blue font-semibold">
-            Connected: {address.slice(0, 6)}...{address.slice(-4)}
-          </p>
-          {process.env.NEXT_PUBLIC_CDP_RPC && (
-            <p className="text-xs text-green-600">⚡ Gasless transactions enabled</p>
-          )}
-        </div>
+    <div className="flex flex-col items-center gap-4 p-4 bg-white rounded-lg shadow-lg max-w-md mx-auto">
+      {/* Toast notifications */}
+      {toast && (
+        <Toast
+          message={toast.message}
+          type={toast.type}
+          onClose={closeToast}
+        />
       )}
+
+      {/* Connection Status */}
+      <div className="text-center">
+        <p className="text-sm text-gray-600">
+          {address ? (
+            <>Connected: {address.slice(0, 6)}...{address.slice(-4)}</>
+          ) : (
+            'Connect wallet for rewards!'
+          )}
+        </p>
+      </div>
 
       {/* Timer */}
       {timerActive && (
@@ -607,7 +560,7 @@ export default function BingoCard() {
       </div>
 
       {/* Game Controls */}
-      <div className="flex flex-col gap-2 mb-4">
+      <div className="flex justify-center mb-4">
         <button
           onClick={startGame}
           disabled={!unlimitedToday && dailyPlays >= MAX_FREE_PLAYS}
@@ -619,15 +572,6 @@ export default function BingoCard() {
         >
           {!unlimitedToday && dailyPlays >= MAX_FREE_PLAYS ? 'Daily Plays Used' : 'New Game'}
         </button>
-        
-        {address && (
-          <button
-            onClick={claimPendingWins}
-            className="px-4 py-2 bg-yellow-500 hover:bg-yellow-600 text-white rounded-lg font-medium text-sm transition-colors"
-          >
-            Claim Pending Rewards
-          </button>
-        )}
       </div>
 
       {/* Recent Draws */}
