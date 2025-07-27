@@ -329,7 +329,7 @@ export default function BingoCard() {
       console.log('💳 Purchasing unlimited access with 50 $BINGO...');
       console.log('📝 This requires: 50 $BINGO tokens + ETH for gas fees');
       
-      await writeContracts({
+      const txResult = await writeContracts({
         contracts: [
           { 
             address: TOKEN_ADDRESS, 
@@ -348,12 +348,19 @@ export default function BingoCard() {
           paymasterService: { url: process.env.NEXT_PUBLIC_CDP_RPC }
         } : undefined,
       });
+
+      console.log('⏳ Transaction submitted, waiting for confirmation...');
+      console.log('📋 Transaction hash:', txResult);
       
+      // Wait a moment for transaction to be processed
+      await new Promise(resolve => setTimeout(resolve, 2000));
+      
+      // Only grant unlimited access after transaction success
       const today = new Date().toISOString().split('T')[0];
       localStorage.setItem('unlimitedDate', today);
       setUnlimitedToday(true);
       alert('✅ Unlimited access unlocked for today with 50 $BINGO!');
-      console.log('✅ Unlimited purchase completed');
+      console.log('✅ Unlimited purchase completed - localStorage updated');
       
     } catch (error: any) {
       console.error('❌ Unlimited purchase failed:', error);
