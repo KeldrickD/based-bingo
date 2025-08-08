@@ -33,10 +33,10 @@ const GAME_ADDRESS = '0x88eAbBdD2158D184f4cB1C39B612eABB48289907' as `0x${string
 
 function generateBingoCard(): (number | string)[][] {
   const columnRanges = [
-    { label: 'B', min: 1, max: 15 }, 
-    { label: 'I', min: 16, max: 30 }, 
-    { label: 'N', min: 31, max: 45 }, 
-    { label: 'G', min: 46, max: 60 }, 
+    { label: 'B', min: 1, max: 15 },
+    { label: 'I', min: 16, max: 30 },
+    { label: 'N', min: 31, max: 45 },
+    { label: 'G', min: 46, max: 60 },
     { label: 'O', min: 61, max: 75 }
   ];
   
@@ -70,7 +70,7 @@ const checkWin = (marked: Set<string>) => {
   if (count >= 1) types.push('Line Bingo!');
   if (count >= 2) types.push('Double Line!');
   if (count === 12) types.push('Full House!');
-  
+
   return { count, types };
 };
 
@@ -204,7 +204,8 @@ export default function BingoCard() {
           address: GAME_ADDRESS,
           abi: bingoGameV3ABI as any,
           functionName: 'join',
-          args: []
+          args: [],
+          value: BigInt(0) // Explicitly specify no payment required
         });
         console.log('✅ Joined on-chain game successfully');
       } catch (err: any) {
@@ -315,7 +316,7 @@ export default function BingoCard() {
       console.log('🌐 Current origin:', window.location.origin);
       console.log('🕐 Request timestamp:', new Date().toISOString());
       
-      const requestPayload = { address, winTypes: newWin.types, gameId: gameId ?? Math.floor(Date.now() / 1000) };
+      const requestPayload = { address, winTypes: newWin.types };
       console.log('📦 Request payload:', JSON.stringify(requestPayload, null, 2));
       
       // Aggressive retry mechanism with longer delays and more attempts
@@ -703,7 +704,7 @@ export default function BingoCard() {
             >
               📢 Share on Farcaster (+1 Play)
             </button>
-            <button 
+            <button
               onClick={payForUnlimited}
               className="w-full bg-green-500 text-white px-4 py-2 rounded-lg font-bold hover:bg-green-600"
             >
