@@ -27,6 +27,37 @@ const bingoGameV3ABI = [
     "stateMutability": "nonpayable", 
     "type": "function"
   },
+  {
+    "inputs": [],
+    "name": "getConfig",
+    "outputs": [
+      {"internalType": "address", "name": "_owner", "type": "address"},
+      {"internalType": "uint256", "name": "_rewardPerWin", "type": "uint256"}
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "getGameStats",
+    "outputs": [
+      {"internalType": "uint256", "name": "_totalGamesPlayed", "type": "uint256"},
+      {"internalType": "uint256", "name": "_contractBalance", "type": "uint256"}
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {"internalType": "address", "name": "oracle", "type": "address"}
+    ],
+    "name": "isAuthorizedOracle",
+    "outputs": [
+      {"internalType": "bool", "name": "", "type": "bool"}
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
   // Add other functions as needed for debugging
   {
     "inputs": [],
@@ -220,8 +251,56 @@ export async function POST(request: NextRequest) {
       console.warn('⚠️ Could not read contract owner (function may not exist):', ownerCheckError.message);
     }
 
+    // Deep diagnostics requested: config, stats, oracle authorization, and dry-run award
+    try {
+      // getConfig
+      const config: any = await (contract as any).getConfig();
+      try {
+        const cfgOwner = config?._owner ?? config?.[0];
+        const cfgRewardPerWin = config?._rewardPerWin ?? config?.[1];
+        console.log('🧩 Config:', {
+          owner: cfgOwner,
+          rewardPerWin: cfgRewardPerWin ? ethers.formatUnits(cfgRewardPerWin, 18) : undefined
+        });
+      } catch {}
+    } catch (e: any) {
+      console.warn('⚠️ getConfig() not available or failed:', e?.message);
+    }
+
+    try {
+      // getGameStats
+      const stats: any = await (contract as any).getGameStats();
+      try {
+        const totalGamesPlayed = stats?._totalGamesPlayed ?? stats?.[0];
+        const contractBalance = stats?._contractBalance ?? stats?.[1];
+        console.log('📈 GameStats:', {
+          totalGamesPlayed: totalGamesPlayed ? totalGamesPlayed.toString() : undefined,
+          contractBalance: contractBalance ? ethers.formatUnits(contractBalance, 18) : undefined
+        });
+      } catch {}
+    } catch (e: any) {
+      console.warn('⚠️ getGameStats() not available or failed:', e?.message);
+    }
+
+    try {
+      const authorized = await (contract as any).isAuthorizedOracle(signer.address);
+      console.log('🔐 isAuthorizedOracle(signer):', authorized);
+    } catch (e: any) {
+      console.warn('⚠️ isAuthorizedOracle() not available or failed:', e?.message);
+    }
+
     // Preflight with staticCall to capture revert reasons before sending a tx
     console.log('🧪 Preflight: staticCall awardWins to detect reverts early...');
+    // Additional explicit callStatic check with common inputs to surface revert reasons clearly
+    try {
+      const probeTypes = ['LINE'];
+      // ethers v6: callStatic is under .staticCall for Contract? We already use .staticCall above.
+      // Use the same interface for consistency; if it fails, error.reason will be logged below.
+      await (contract as any).awardWins.staticCall(address, probeTypes);
+      console.log('🧪 Probe call (LINE) would succeed');
+    } catch (probeErr: any) {
+      console.warn('⚠️ Probe call (LINE) would revert:', probeErr?.reason || probeErr?.message);
+    }
     let chosenNormalized: string[] | null = null;
     let lastPreflightError: any = null;
     for (const candidate of normalizationCandidates) {
