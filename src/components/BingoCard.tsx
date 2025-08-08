@@ -212,8 +212,6 @@ export default function BingoCard() {
       });
       localStorage.setItem(cacheKey, '1');
       console.log('✅ Joined recorded for today');
-      // Re-enable auto-joining attempts for future if previously disabled
-      setAutoJoinDisabled(false);
       return true;
     } catch (err: any) {
       const msg = err?.message || String(err);
@@ -710,7 +708,7 @@ export default function BingoCard() {
             }`}
           >
             {!unlimitedToday && dailyPlays >= MAX_FREE_PLAYS ? 'Daily Plays Used' : 'New Game'}
-          </button>
+        </button>
           {/* Auto-join runs in the background; no extra button needed for UX */}
         </div>
       </div>
