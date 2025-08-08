@@ -29,8 +29,8 @@ const Toast = ({ message, type, onClose }: { message: string; type: 'success' | 
   );
 };
 
-const TOKEN_ADDRESS = '0xd5D90dF16CA7b11Ad852e3Bf93c0b9b774CEc047' as `0x${string}`;
-const GAME_ADDRESS = '0x88eAbBdD2158D184f4cB1C39B612eABB48289907' as `0x${string}`;
+const TOKEN_ADDRESS = (process.env.NEXT_PUBLIC_TOKEN_ADDRESS as `0x${string}`) || '0xd5D90dF16CA7b11Ad852e3Bf93c0b9b774CEc047';
+const GAME_ADDRESS = (process.env.NEXT_PUBLIC_GAME_ADDRESS as `0x${string}`) || '0x88eAbBdD2158D184f4cB1C39B612eABB48289907';
 
 function generateBingoCard(): (number | string)[][] {
   const columnRanges = [

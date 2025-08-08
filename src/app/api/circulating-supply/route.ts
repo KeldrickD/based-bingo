@@ -8,7 +8,7 @@ const erc20Abi = [
   { type: 'function', stateMutability: 'view', name: 'balanceOf', inputs: [{ name: 'account', type: 'address' }], outputs: [{ type: 'uint256' }] },
 ] as const;
 
-const TOKEN_ADDRESS = '0xd5D90dF16CA7b11Ad852e3Bf93c0b9b774CEc047' as `0x${string}`;
+const TOKEN_ADDRESS = (process.env.TOKEN_ADDRESS as `0x${string}`) || '0xd5D90dF16CA7b11Ad852e3Bf93c0b9b774CEc047';
 const NON_CIRC_ADDRESSES: `0x${string}`[] = [
   '0x86EA71C17B76169Fce3Cd12C94C3CdCaD2C72844', // Owner/Treasury
   '0x88eAbBdD2158D184f4cB1C39B612eABB48289907', // Game V3

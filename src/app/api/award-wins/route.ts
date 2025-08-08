@@ -57,7 +57,7 @@ const bingoGameV3ABI = [
   { inputs: [{ internalType: 'address', name: 'oracle', type: 'address' }], name: 'isAuthorizedOracle', outputs: [{ internalType: 'bool', name: '', type: 'bool' }], stateMutability: 'view', type: 'function' },
 ];
 
-const GAME_ADDRESS = '0x88eAbBdD2158D184f4cB1C39B612eABB48289907';
+const GAME_ADDRESS = (process.env.GAME_ADDRESS as string) || '0x88eAbBdD2158D184f4cB1C39B612eABB48289907';
 const BASE_RPC_URL = 'https://mainnet.base.org';
 
 function normalizeWinTypesToStrings(winTypes: string[]): string[] {
