@@ -196,25 +196,8 @@ export default function BingoCard() {
     const newGameId = Math.floor(Date.now() / 1000);
     setGameId(newGameId);
 
-    // Attempt on-chain join if wallet connected (V3 join is permissionless and required before award)
-    if (address) {
-      try {
-        console.log('🎮 Joining on-chain game for address:', address);
-        await writeContractAsync({
-          address: GAME_ADDRESS,
-          abi: bingoGameV3ABI as any,
-          functionName: 'join',
-          args: [],
-          value: BigInt(0) // Explicitly specify no payment required
-        });
-        console.log('✅ Successfully joined on-chain game');
-      } catch (err: any) {
-        console.warn('⚠️ join() failed or already called:', err?.message || err);
-        // Continue anyway - join might have been called already
-      }
-    } else {
-      console.log('👤 No wallet connected; starting local game only. Connect wallet to receive rewards.');
-    }
+    // Removed on-chain join() to prevent transaction prompts on New Game
+    // V3 award is permissionless; joining is optional for rewards in current UX
 
     console.log('🎮 Starting game session...');
     resetGame();
@@ -317,7 +300,9 @@ export default function BingoCard() {
       console.log('🌐 Current origin:', window.location.origin);
       console.log('🕐 Request timestamp:', new Date().toISOString());
       
-      const requestPayload = { address, winTypes: newWin.types };
+      // Send ONLY the latest win type to avoid duplicate-claim reverts
+      const latestType = newWin.types[newWin.types.length - 1];
+      const requestPayload = { address, winTypes: [latestType] };
       console.log('📦 Request payload:', JSON.stringify(requestPayload, null, 2));
       
       // Aggressive retry mechanism with longer delays and more attempts
