@@ -136,6 +136,14 @@ export async function POST(request: NextRequest) {
     const signer = new ethers.Wallet(ownerPrivateKey, provider);
     const contract = new ethers.Contract(GAME_ADDRESS, bingoGameV3ABI, signer) as any;
 
+    // Diagnostics: oracle authorization
+    let isOracle = false;
+    try {
+      isOracle = await contract.isAuthorizedOracle(signer.address);
+    } catch (e: any) {
+      // ignore if function not present
+    }
+
     // Normalize to 3 encodings
     const normalizedStrings = normalizeWinTypesToStrings(winTypes);
     const normalizedBytes32 = mapWinTypesToBytes32(normalizedStrings);
@@ -166,11 +174,11 @@ export async function POST(request: NextRequest) {
     }
 
     if (!selected) {
-      return NextResponse.json({ success: false, message: 'awardWins would revert - not sending transaction', details: lastError?.message, diagnostic: { normalizedStrings, normalizedUint8, normalizedBytes32, chosenGameId } }, { status: 400 });
+      return NextResponse.json({ success: false, message: 'awardWins would revert - not sending transaction', details: lastError?.message, diagnostic: { normalizedStrings, normalizedUint8, normalizedBytes32, chosenGameId, isAuthorizedOracle: isOracle, signer: signer.address } }, { status: 400 });
     }
 
     if (dryRun) {
-      return NextResponse.json({ success: true, message: 'Preflight success (dry run)', selectedVariant: selected.label, args: selected.args });
+      return NextResponse.json({ success: true, message: 'Preflight success (dry run)', selectedVariant: selected.label, args: selected.args, isAuthorizedOracle: isOracle, signer: signer.address });
     }
 
     // Estimate gas and send
@@ -178,7 +186,7 @@ export async function POST(request: NextRequest) {
     try {
       gasEstimate = await contract.awardWins.estimateGas(...selected.args);
     } catch (gasError: any) {
-      return NextResponse.json({ success: false, message: 'Gas estimation failed', details: gasError?.message, variant: selected.label }, { status: 500 });
+      return NextResponse.json({ success: false, message: 'Gas estimation failed', details: gasError?.message, variant: selected.label, isAuthorizedOracle: isOracle, signer: signer.address }, { status: 500 });
     }
 
     const tx = await contract.awardWins(...selected.args, { gasLimit: Math.max(Number(gasEstimate) * 2, 200_000) });
@@ -187,7 +195,7 @@ export async function POST(request: NextRequest) {
     const processingTime = Date.now() - startTime;
     const totalRewards = 1000 * normalizedStrings.length;
 
-    return NextResponse.json({ success: true, message: `Rewards sent: ${normalizedStrings.join(' + ')}`, transactionHash: receipt.hash, blockNumber: receipt.blockNumber, playerAddress: address, totalRewards, processingTimeMs: processingTime });
+    return NextResponse.json({ success: true, message: `Rewards sent: ${normalizedStrings.join(' + ')}`, transactionHash: receipt.hash, blockNumber: receipt.blockNumber, playerAddress: address, totalRewards, processingTimeMs: processingTime, selectedVariant: selected.label, isAuthorizedOracle: isOracle, signer: signer.address });
   } catch (error: any) {
     const processingTime = Date.now() - startTime;
     return NextResponse.json({ success: false, message: 'Failed to award wins', details: error?.message, processingTimeMs: processingTime }, { status: 500 });
