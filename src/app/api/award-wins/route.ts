@@ -244,6 +244,11 @@ export async function POST(request: NextRequest) {
 
     // Try to read contract owner for diagnostics ONLY (do not enforce)
     let contractOwner: string | null = null;
+    // Diagnostic holders
+    let diagConfig: { owner?: string; rewardPerWinEth?: string } = {};
+    let diagStats: { totalGamesPlayed?: string; contractBalanceEth?: string } = {};
+    let diagIsOracleAuthorized: boolean | undefined = undefined;
+    let diagProbeReason: string | undefined = undefined;
     try {
       contractOwner = await contract.owner();
       console.log('🏛️ Contract owner (diagnostic):', contractOwner);
@@ -258,10 +263,9 @@ export async function POST(request: NextRequest) {
       try {
         const cfgOwner = config?._owner ?? config?.[0];
         const cfgRewardPerWin = config?._rewardPerWin ?? config?.[1];
-        console.log('🧩 Config:', {
-          owner: cfgOwner,
-          rewardPerWin: cfgRewardPerWin ? ethers.formatUnits(cfgRewardPerWin, 18) : undefined
-        });
+        const rewardEth = cfgRewardPerWin ? ethers.formatUnits(cfgRewardPerWin, 18) : undefined;
+        diagConfig = { owner: cfgOwner, rewardPerWinEth: rewardEth };
+        console.log('🧩 Config:', { owner: cfgOwner, rewardPerWin: rewardEth });
       } catch {}
     } catch (e: any) {
       console.warn('⚠️ getConfig() not available or failed:', e?.message);
@@ -273,10 +277,10 @@ export async function POST(request: NextRequest) {
       try {
         const totalGamesPlayed = stats?._totalGamesPlayed ?? stats?.[0];
         const contractBalance = stats?._contractBalance ?? stats?.[1];
-        console.log('📈 GameStats:', {
-          totalGamesPlayed: totalGamesPlayed ? totalGamesPlayed.toString() : undefined,
-          contractBalance: contractBalance ? ethers.formatUnits(contractBalance, 18) : undefined
-        });
+        const totalStr = totalGamesPlayed ? totalGamesPlayed.toString() : undefined;
+        const balanceEth = contractBalance ? ethers.formatUnits(contractBalance, 18) : undefined;
+        diagStats = { totalGamesPlayed: totalStr, contractBalanceEth: balanceEth };
+        console.log('📈 GameStats:', { totalGamesPlayed: totalStr, contractBalance: balanceEth });
       } catch {}
     } catch (e: any) {
       console.warn('⚠️ getGameStats() not available or failed:', e?.message);
@@ -284,6 +288,7 @@ export async function POST(request: NextRequest) {
 
     try {
       const authorized = await (contract as any).isAuthorizedOracle(signer.address);
+      diagIsOracleAuthorized = authorized;
       console.log('🔐 isAuthorizedOracle(signer):', authorized);
     } catch (e: any) {
       console.warn('⚠️ isAuthorizedOracle() not available or failed:', e?.message);
@@ -299,7 +304,8 @@ export async function POST(request: NextRequest) {
       await (contract as any).awardWins.staticCall(address, probeTypes);
       console.log('🧪 Probe call (LINE) would succeed');
     } catch (probeErr: any) {
-      console.warn('⚠️ Probe call (LINE) would revert:', probeErr?.reason || probeErr?.message);
+      diagProbeReason = probeErr?.reason || probeErr?.message;
+      console.warn('⚠️ Probe call (LINE) would revert:', diagProbeReason);
     }
     let chosenNormalized: string[] | null = null;
     let lastPreflightError: any = null;
@@ -343,6 +349,10 @@ export async function POST(request: NextRequest) {
             player: address,
             winTypes,
             normalized,
+            config: diagConfig,
+            stats: diagStats,
+            isAuthorizedOracle: diagIsOracleAuthorized,
+            probeReason: diagProbeReason,
           },
         },
         { status: 400 }
