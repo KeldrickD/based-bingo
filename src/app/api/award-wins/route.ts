@@ -37,7 +37,7 @@ const bingoGameV3ABI = [
   }
 ];
 
-const GAME_ADDRESS = '0x4CE879376Dc50aBB1Eb8F236B76e8e5a724780Be';
+const GAME_ADDRESS = '0x88eAbBdD2158D184f4cB1C39B612eABB48289907';
 const BASE_RPC_URL = 'https://mainnet.base.org';
 
 function normalizeWinTypes(winTypes: string[]): string[] {
