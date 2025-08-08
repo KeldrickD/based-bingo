@@ -95,6 +95,7 @@ export default function BingoCard() {
     | { state: 'success'; txHash: string; totalRewards: number }
     | { state: 'error'; message: string; details?: string; diag?: any }
   >({ state: 'idle' });
+  const [gameId, setGameId] = useState<number | null>(null);
   const [gameTimer, setGameTimer] = useState(120);
   const [timerActive, setTimerActive] = useState(false);
   const [autoDrawInterval, setAutoDrawInterval] = useState<NodeJS.Timeout | null>(null);
@@ -190,6 +191,10 @@ export default function BingoCard() {
       alert('Daily free plays used up! Share on Farcaster for +1 play or buy unlimited access.');
       return;
     }
+
+    // Generate a new gameId for this session (timestamp-based)
+    const newGameId = Math.floor(Date.now() / 1000);
+    setGameId(newGameId);
 
     // Attempt on-chain join if wallet connected (V3 join is permissionless and required before award)
     if (address) {
@@ -310,7 +315,7 @@ export default function BingoCard() {
       console.log('🌐 Current origin:', window.location.origin);
       console.log('🕐 Request timestamp:', new Date().toISOString());
       
-      const requestPayload = { address, winTypes: newWin.types };
+      const requestPayload = { address, winTypes: newWin.types, gameId: gameId ?? Math.floor(Date.now() / 1000) };
       console.log('📦 Request payload:', JSON.stringify(requestPayload, null, 2));
       
       // Aggressive retry mechanism with longer delays and more attempts
@@ -452,7 +457,7 @@ export default function BingoCard() {
       setWinInfo(newWin);
       alert(`🎉 ${newWin.types.join(' + ')} achieved! Connect your wallet to receive automatic $BINGO rewards!`);
     }
-  }, [marked, address, winInfo.count]);
+  }, [marked, address, winInfo.count, gameId]);
 
   const shareForExtraPlay = async () => {
     try {
