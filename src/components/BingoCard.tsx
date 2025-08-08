@@ -102,6 +102,7 @@ export default function BingoCard() {
   const [autoDrawInterval, setAutoDrawInterval] = useState<NodeJS.Timeout | null>(null);
   const gridRef = useRef<HTMLDivElement>(null);
   const isJoiningRef = useRef<boolean>(false);
+  const [autoJoinDisabled, setAutoJoinDisabled] = useState(false);
   
   // Daily limits state
   const [lastPlayDate, setLastPlayDate] = useState('');
@@ -210,6 +211,8 @@ export default function BingoCard() {
       });
       localStorage.setItem(cacheKey, '1');
       console.log('✅ Joined recorded for today');
+      // Re-enable auto-joining attempts for future if previously disabled
+      setAutoJoinDisabled(false);
       return true;
     } catch (err: any) {
       const msg = err?.message || String(err);
@@ -219,6 +222,12 @@ export default function BingoCard() {
       } else {
         showToast('Join failed. You may need to confirm in your wallet or try again.', 'error');
       }
+      // Disable auto-join to prevent repeated wallet prompts
+      setAutoJoinDisabled(true);
+      try {
+        const today = new Date().toISOString().split('T')[0];
+        localStorage.setItem(`autoJoinDisabled:${address}:${today}`, '1');
+      } catch {}
       return false;
     } finally {
       isJoiningRef.current = false;
@@ -334,6 +343,13 @@ export default function BingoCard() {
 
       // Ensure on-chain join before attempting award (gasless if paymaster enabled)
       (async () => {
+        const today = new Date().toISOString().split('T')[0];
+        const disabled = autoJoinDisabled || localStorage.getItem(`autoJoinDisabled:${address}:${today}`) === '1';
+        if (disabled) {
+          console.warn('⛔ Skipping auto-join due to previous failure this session/day');
+          showToast('Join required to receive rewards. Tap "Enable Rewards (Join)" and confirm in wallet.', 'error');
+          return;
+        }
         const joinedOk = await joinOnDemand();
         if (!joinedOk) {
           console.warn('⛔ Aborting award: join prerequisite not satisfied');
@@ -685,17 +701,30 @@ export default function BingoCard() {
 
       {/* Game Controls */}
       <div className="flex justify-center mb-4">
-        <button
-          onClick={startGame}
-          disabled={!unlimitedToday && dailyPlays >= MAX_FREE_PLAYS}
-          className={`px-6 py-3 rounded-lg font-bold text-white transition-colors ${
-            !unlimitedToday && dailyPlays >= MAX_FREE_PLAYS
-              ? 'bg-gray-400 cursor-not-allowed'
-              : 'bg-coinbase-blue hover:bg-blue-600'
-          }`}
-        >
-          {!unlimitedToday && dailyPlays >= MAX_FREE_PLAYS ? 'Daily Plays Used' : 'New Game'}
-        </button>
+        <div className="flex flex-col gap-2 items-center">
+          <button
+            onClick={startGame}
+            disabled={!unlimitedToday && dailyPlays >= MAX_FREE_PLAYS}
+            className={`px-6 py-3 rounded-lg font-bold text-white transition-colors ${
+              !unlimitedToday && dailyPlays >= MAX_FREE_PLAYS
+                ? 'bg-gray-400 cursor-not-allowed'
+                : 'bg-coinbase-blue hover:bg-blue-600'
+            }`}
+          >
+            {!unlimitedToday && dailyPlays >= MAX_FREE_PLAYS ? 'Daily Plays Used' : 'New Game'}
+          </button>
+          {address && (
+            <button
+              onClick={async () => {
+                const ok = await joinOnDemand();
+                if (ok) showToast('✅ Rewards enabled for today!', 'success');
+              }}
+              className="text-xs underline text-coinbase-blue hover:text-blue-700"
+            >
+              Enable Rewards (Join)
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Recent Draws */}
