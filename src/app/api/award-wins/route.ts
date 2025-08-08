@@ -241,6 +241,18 @@ export async function POST(request: NextRequest) {
     // Create contract instance
     console.log('📋 Creating contract instance...');
     const contract = new ethers.Contract(GAME_ADDRESS, bingoGameV3ABI, signer);
+    // Also prepare a 3-arg ABI variant for probing if needed
+    const bingoGameV3ABI_3ARG = [
+      { "inputs": [], "name": "join", "outputs": [], "stateMutability": "nonpayable", "type": "function" },
+      { "inputs": [], "name": "buyUnlimited", "outputs": [], "stateMutability": "nonpayable", "type": "function" },
+      { "inputs": [
+          {"internalType": "address", "name": "player", "type": "address"},
+          {"internalType": "string[]", "name": "winTypes", "type": "string[]"},
+          {"internalType": "uint256", "name": "gameId", "type": "uint256"}
+        ], "name": "awardWins", "outputs": [], "stateMutability": "nonpayable", "type": "function" },
+      { "inputs": [], "name": "owner", "outputs": [{"internalType": "address", "name": "", "type": "address"}], "stateMutability": "view", "type": "function" }
+    ];
+    const contract3 = new ethers.Contract(GAME_ADDRESS, bingoGameV3ABI_3ARG, signer);
 
     // Try to read contract owner for diagnostics ONLY (do not enforce)
     let contractOwner: string | null = null;
@@ -307,17 +319,39 @@ export async function POST(request: NextRequest) {
       diagProbeReason = probeErr?.reason || probeErr?.message;
       console.warn('⚠️ Probe call (LINE) would revert:', diagProbeReason);
     }
+    // Also probe a 3-arg variant with a default gameId of 1
+    try {
+      await (contract3 as any).awardWins.staticCall(address, ['LINE'], 1);
+      console.log('🧪 Probe call 3-arg (LINE, gameId=1) would succeed');
+    } catch (probeErr3: any) {
+      console.warn('⚠️ Probe call 3-arg (LINE, gameId=1) would revert:', probeErr3?.reason || probeErr3?.message);
+    }
     let chosenNormalized: string[] | null = null;
+    let chosenVariant: '2' | '3' | null = null;
+    const defaultGameId = 1;
     let lastPreflightError: any = null;
     for (const candidate of normalizationCandidates) {
+      // Try 3-arg variant first
+      try {
+        await (contract3 as any).awardWins.staticCall(address, candidate, defaultGameId);
+        chosenNormalized = candidate;
+        chosenVariant = '3';
+        console.log('🧪 Preflight success with 3-arg candidate:', candidate, 'gameId=', defaultGameId);
+        break;
+      } catch (e3: any) {
+        lastPreflightError = e3;
+        console.warn('⚠️ Preflight 3-arg candidate failed:', candidate, e3?.message);
+      }
+      // Fallback to 2-arg variant
       try {
         await (contract as any).awardWins.staticCall(address, candidate);
         chosenNormalized = candidate;
-        console.log('🧪 Preflight success with candidate:', candidate);
+        chosenVariant = '2';
+        console.log('🧪 Preflight success with 2-arg candidate:', candidate);
         break;
-      } catch (e: any) {
-        lastPreflightError = e;
-        console.warn('⚠️ Preflight candidate failed:', candidate, e?.message);
+      } catch (e2: any) {
+        lastPreflightError = e2;
+        console.warn('⚠️ Preflight 2-arg candidate failed:', candidate, e2?.message);
       }
     }
     // If none passed, wait briefly and retry once (to allow recent join() to finalize)
@@ -326,13 +360,24 @@ export async function POST(request: NextRequest) {
       await new Promise((r) => setTimeout(r, 4000));
       for (const candidate of normalizationCandidates) {
         try {
+          await (contract3 as any).awardWins.staticCall(address, candidate, defaultGameId);
+          chosenNormalized = candidate;
+          chosenVariant = '3';
+          console.log('🧪 Preflight success on retry with 3-arg candidate:', candidate, 'gameId=', defaultGameId);
+          break;
+        } catch (e3: any) {
+          lastPreflightError = e3;
+          console.warn('⚠️ Retry preflight 3-arg candidate failed:', candidate, e3?.message);
+        }
+        try {
           await (contract as any).awardWins.staticCall(address, candidate);
           chosenNormalized = candidate;
-          console.log('🧪 Preflight success on retry with candidate:', candidate);
+          chosenVariant = '2';
+          console.log('🧪 Preflight success on retry with 2-arg candidate:', candidate);
           break;
-        } catch (e: any) {
-          lastPreflightError = e;
-          console.warn('⚠️ Retry preflight candidate failed:', candidate, e?.message);
+        } catch (e2: any) {
+          lastPreflightError = e2;
+          console.warn('⚠️ Retry preflight 2-arg candidate failed:', candidate, e2?.message);
         }
       }
     }
@@ -353,6 +398,8 @@ export async function POST(request: NextRequest) {
             stats: diagStats,
             isAuthorizedOracle: diagIsOracleAuthorized,
             probeReason: diagProbeReason,
+            chosenVariant,
+            gameIdUsed: defaultGameId,
           },
         },
         { status: 400 }
@@ -363,7 +410,9 @@ export async function POST(request: NextRequest) {
     console.log('⛽ Estimating gas for awardWins transaction...');
     let gasEstimate;
     try {
-      gasEstimate = await (contract as any).awardWins.estimateGas(address, chosenNormalized);
+      gasEstimate = chosenVariant === '3'
+        ? await (contract3 as any).awardWins.estimateGas(address, chosenNormalized, defaultGameId)
+        : await (contract as any).awardWins.estimateGas(address, chosenNormalized);
       console.log('⛽ Gas estimate:', gasEstimate.toString());
     } catch (gasError: any) {
       console.error('❌ Gas estimation failed:', gasError.message);
@@ -385,7 +434,9 @@ export async function POST(request: NextRequest) {
     };
     console.log('📞 Transaction parameters:', txParams);
     
-    const tx = await (contract as any).awardWins(address, chosenNormalized, txParams);
+    const tx = chosenVariant === '3'
+      ? await (contract3 as any).awardWins(address, chosenNormalized, defaultGameId, txParams)
+      : await (contract as any).awardWins(address, chosenNormalized, txParams);
     
     console.log('⏳ Transaction submitted:', {
       hash: tx.hash,
