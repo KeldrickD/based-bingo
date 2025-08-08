@@ -198,19 +198,19 @@ export default function BingoCard() {
 
     // Attempt on-chain join if wallet connected (V3 join is permissionless and required before award)
     if (address) {
-      // Make join() call non-blocking to prevent UI delays
-      writeContract({
-        address: GAME_ADDRESS,
-        abi: bingoGameV3ABI as any,
-        functionName: 'join',
-        args: [],
-        value: BigInt(0) // Explicitly specify no payment required
-      }).then(() => {
-        console.log('✅ Joined on-chain game successfully');
-      }).catch((err: any) => {
-        console.warn('⚠️ join() may have already been called or failed non-critically:', err?.message || err);
-      });
-      console.log('🎮 Join transaction initiated for address:', address);
+      try {
+        console.log('🎮 Joining on-chain game for address:', address);
+        writeContract({
+          address: GAME_ADDRESS,
+          abi: bingoGameV3ABI as any,
+          functionName: 'join',
+          args: [],
+          value: BigInt(0) // Explicitly specify no payment required
+        });
+        console.log('✅ Join transaction initiated successfully');
+      } catch (err: any) {
+        console.warn('⚠️ join() may have failed:', err?.message || err);
+      }
     } else {
       console.log('👤 No wallet connected; starting local game only. Connect wallet to receive rewards.');
     }
