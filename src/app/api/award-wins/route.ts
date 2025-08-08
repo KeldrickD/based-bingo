@@ -40,6 +40,16 @@ const bingoGameV3ABI = [
 const GAME_ADDRESS = '0x4CE879376Dc50aBB1Eb8F236B76e8e5a724780Be';
 const BASE_RPC_URL = 'https://mainnet.base.org';
 
+function normalizeWinTypes(winTypes: string[]): string[] {
+  return winTypes.map((t) => {
+    const s = t.toLowerCase().replace(/[^a-z]/g, '');
+    if (s.includes('double')) return 'DOUBLE_LINE';
+    if (s.includes('fullhouse') || s.includes('fullcard')) return 'FULL_HOUSE';
+    if (s.includes('line')) return 'LINE';
+    return t.toUpperCase();
+  });
+}
+
 // Health check endpoint
 export async function GET() {
   console.log('🏥 Award-wins health check called');
@@ -103,11 +113,14 @@ export async function POST(request: NextRequest) {
   try {
     // Parse and validate request body
     const requestBody = await request.json();
-    const { address, winTypes } = requestBody;
+    const { address, winTypes } = requestBody as { address: string; winTypes: string[] };
     
+    const normalized = normalizeWinTypes(winTypes || []);
+
     console.log('📋 Request details:', {
       address: address ? `${address.slice(0, 6)}...${address.slice(-4)}` : 'undefined',
       winTypes,
+      normalized,
       winTypesLength: winTypes?.length,
       requestBody: JSON.stringify(requestBody)
     });
@@ -147,7 +160,7 @@ export async function POST(request: NextRequest) {
     const provider = new ethers.JsonRpcProvider(BASE_RPC_URL);
     const signer = new ethers.Wallet(ownerPrivateKey, provider);
     
-    console.log('👛 Owner wallet address:', signer.address);
+    console.log('👛 Signer address:', signer.address);
     
     // Verify network connection and get owner balance
     try {
@@ -180,36 +193,45 @@ export async function POST(request: NextRequest) {
     // Create contract instance
     console.log('📋 Creating contract instance...');
     const contract = new ethers.Contract(GAME_ADDRESS, bingoGameV3ABI, signer);
-    console.log('📋 Contract instance created:', {
-      address: contract.target,
-      hasAwardWins: typeof contract.awardWins === 'function'
-    });
-    
-    // Verify contract owner (optional debugging step)
+
+    // Try to read contract owner for diagnostics ONLY (do not enforce)
+    let contractOwner: string | null = null;
     try {
-      const contractOwner = await contract.owner();
-      console.log('🏛️ Contract owner verification:', {
-        contractOwner,
-        signerAddress: signer.address,
-        isOwner: contractOwner.toLowerCase() === signer.address.toLowerCase()
-      });
-      
-      if (contractOwner.toLowerCase() !== signer.address.toLowerCase()) {
-        console.error('❌ CRITICAL: Signer is not the contract owner!');
-        return NextResponse.json(
-          { success: false, message: 'Server error: unauthorized signer' },
-          { status: 500 }
-        );
-      }
+      contractOwner = await contract.owner();
+      console.log('🏛️ Contract owner (diagnostic):', contractOwner);
     } catch (ownerCheckError: any) {
-      console.warn('⚠️ Could not verify contract owner (function may not exist):', ownerCheckError.message);
+      console.warn('⚠️ Could not read contract owner (function may not exist):', ownerCheckError.message);
+    }
+
+    // Preflight with staticCall to capture revert reasons before sending a tx
+    console.log('🧪 Preflight: staticCall awardWins to detect reverts early...');
+    try {
+      await (contract as any).awardWins.staticCall(address, normalized);
+      console.log('🧪 Preflight success: awardWins would succeed. Proceeding to send tx.');
+    } catch (preflightError: any) {
+      console.error('❌ Preflight failed (awardWins would revert):', preflightError.message);
+      return NextResponse.json(
+        {
+          success: false,
+          message: 'awardWins would revert - not sending transaction',
+          details: preflightError.message,
+          diagnostic: {
+            contractOwner,
+            signerAddress: signer.address,
+            player: address,
+            winTypes,
+            normalized,
+          },
+        },
+        { status: 400 }
+      );
     }
 
     // Estimate gas for the transaction
     console.log('⛽ Estimating gas for awardWins transaction...');
     let gasEstimate;
     try {
-      gasEstimate = await contract.awardWins.estimateGas(address, winTypes);
+      gasEstimate = await (contract as any).awardWins.estimateGas(address, normalized);
       console.log('⛽ Gas estimate:', gasEstimate.toString());
     } catch (gasError: any) {
       console.error('❌ Gas estimation failed:', gasError.message);
@@ -219,7 +241,7 @@ export async function POST(request: NextRequest) {
         data: gasError.data
       });
       return NextResponse.json(
-        { success: false, message: 'Gas estimation failed: ' + gasError.message },
+        { success: false, message: 'Gas estimation failed: ' + gasError.message, diagnostic: { normalized } },
         { status: 500 }
       );
     }
@@ -231,7 +253,7 @@ export async function POST(request: NextRequest) {
     };
     console.log('📞 Transaction parameters:', txParams);
     
-    const tx = await contract.awardWins(address, winTypes, txParams);
+    const tx = await (contract as any).awardWins(address, normalized, txParams);
     
     console.log('⏳ Transaction submitted:', {
       hash: tx.hash,
@@ -245,7 +267,7 @@ export async function POST(request: NextRequest) {
     const receipt = await tx.wait();
     
     const processingTime = Date.now() - startTime;
-    const totalRewards = 1000 * winTypes.length;
+    const totalRewards = 1000 * normalized.length;
     
     console.log('✅ Transaction confirmed successfully:', {
       hash: receipt.hash,
@@ -255,14 +277,14 @@ export async function POST(request: NextRequest) {
       processingTimeMs: processingTime
     });
 
-    console.log(`🎉 Successfully awarded ${totalRewards} $BINGO (${winTypes.join(' + ')}) to ${address}`);
+    console.log(`🎉 Successfully awarded ${totalRewards} $BINGO (${normalized.join(' + ')}) to ${address}`);
 
     return NextResponse.json({
       success: true,
-      message: `Rewards sent: ${winTypes.join(' + ')}`,
+      message: `Rewards sent: ${normalized.join(' + ')}`,
       transactionHash: receipt.hash,
       blockNumber: receipt.blockNumber,
-      winTypes,
+      winTypes: normalized,
       playerAddress: address,
       totalRewards,
       gasUsed: receipt.gasUsed?.toString(),
