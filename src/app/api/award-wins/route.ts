@@ -116,6 +116,23 @@ export async function POST(request: NextRequest) {
     const { address, winTypes } = requestBody as { address: string; winTypes: string[] };
     
     const normalized = normalizeWinTypes(winTypes || []);
+    // Prepare alternative normalizations in case contract expects different enum casing/order
+    const normalizationCandidates: string[][] = [];
+    // original normalized
+    normalizationCandidates.push(normalized);
+    // uppercase variants
+    normalizationCandidates.push((winTypes || []).map((t: string) => t.toUpperCase().replace(/[^A-Z_]/g, '')));
+    // safe mapped set
+    const safeMap: Record<string, string> = {
+      'line bingo!': 'LINE',
+      'line': 'LINE',
+      'double line!': 'DOUBLE_LINE',
+      'double line': 'DOUBLE_LINE',
+      'full house!': 'FULL_HOUSE',
+      'full house': 'FULL_HOUSE',
+      'full card': 'FULL_HOUSE',
+    };
+    normalizationCandidates.push((winTypes || []).map((t: string) => safeMap[t.toLowerCase()] || t.toUpperCase()));
 
     console.log('📋 Request details:', {
       address: address ? `${address.slice(0, 6)}...${address.slice(-4)}` : 'undefined',
@@ -205,16 +222,42 @@ export async function POST(request: NextRequest) {
 
     // Preflight with staticCall to capture revert reasons before sending a tx
     console.log('🧪 Preflight: staticCall awardWins to detect reverts early...');
-    try {
-      await (contract as any).awardWins.staticCall(address, normalized);
-      console.log('🧪 Preflight success: awardWins would succeed. Proceeding to send tx.');
-    } catch (preflightError: any) {
-      console.error('❌ Preflight failed (awardWins would revert):', preflightError.message);
+    let chosenNormalized: string[] | null = null;
+    let lastPreflightError: any = null;
+    for (const candidate of normalizationCandidates) {
+      try {
+        await (contract as any).awardWins.staticCall(address, candidate);
+        chosenNormalized = candidate;
+        console.log('🧪 Preflight success with candidate:', candidate);
+        break;
+      } catch (e: any) {
+        lastPreflightError = e;
+        console.warn('⚠️ Preflight candidate failed:', candidate, e?.message);
+      }
+    }
+    // If none passed, wait briefly and retry once (to allow recent join() to finalize)
+    if (!chosenNormalized) {
+      console.log('⏳ Waiting 4s then retrying preflight once...');
+      await new Promise((r) => setTimeout(r, 4000));
+      for (const candidate of normalizationCandidates) {
+        try {
+          await (contract as any).awardWins.staticCall(address, candidate);
+          chosenNormalized = candidate;
+          console.log('🧪 Preflight success on retry with candidate:', candidate);
+          break;
+        } catch (e: any) {
+          lastPreflightError = e;
+          console.warn('⚠️ Retry preflight candidate failed:', candidate, e?.message);
+        }
+      }
+    }
+    if (!chosenNormalized) {
+      console.error('❌ Preflight failed (awardWins would revert):', lastPreflightError?.message);
       return NextResponse.json(
         {
           success: false,
           message: 'awardWins would revert - not sending transaction',
-          details: preflightError.message,
+          details: lastPreflightError?.message,
           diagnostic: {
             contractOwner,
             signerAddress: signer.address,
@@ -231,7 +274,7 @@ export async function POST(request: NextRequest) {
     console.log('⛽ Estimating gas for awardWins transaction...');
     let gasEstimate;
     try {
-      gasEstimate = await (contract as any).awardWins.estimateGas(address, normalized);
+      gasEstimate = await (contract as any).awardWins.estimateGas(address, chosenNormalized);
       console.log('⛽ Gas estimate:', gasEstimate.toString());
     } catch (gasError: any) {
       console.error('❌ Gas estimation failed:', gasError.message);
@@ -253,7 +296,7 @@ export async function POST(request: NextRequest) {
     };
     console.log('📞 Transaction parameters:', txParams);
     
-    const tx = await (contract as any).awardWins(address, normalized, txParams);
+    const tx = await (contract as any).awardWins(address, chosenNormalized, txParams);
     
     console.log('⏳ Transaction submitted:', {
       hash: tx.hash,
