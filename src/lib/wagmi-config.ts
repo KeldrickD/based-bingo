@@ -17,6 +17,20 @@ const getAppUrl = () => {
   return 'https://www.basedbingo.xyz';
 };
 
+// Detect if running inside a Farcaster/Warpcast frame to avoid blocked calls
+const detectFarcaster = () => {
+  try {
+    if (typeof navigator !== 'undefined' && navigator.userAgent) {
+      if (/Farcaster|Warpcast/i.test(navigator.userAgent)) return true;
+    }
+    if (typeof window !== 'undefined') {
+      const host = window.location?.hostname || '';
+      if (/warpcast\.com|farcaster\.xyz/i.test(host)) return true;
+    }
+  } catch {}
+  return process.env.NEXT_PUBLIC_IS_FRAME === '1';
+};
+
 // Select RPC with priority: CDP Paymaster > Default > Backup
 const getRpcUrl = () => {
   if (CDP_RPC) {
@@ -30,40 +44,52 @@ const getRpcUrl = () => {
 const rpcUrl = getRpcUrl();
 const appUrl = getAppUrl();
 
+const isFarcasterEnv = detectFarcaster();
+
+// Build connectors with Farcaster-aware gating for WalletConnect
+const connectorsList = [
+  // Primary: Farcaster Mini App connector (EIP-5792 compliant)
+  miniAppConnector(),
+
+  // Enhanced: Coinbase Wallet with ERC-4337 support
+  coinbaseWallet({
+    appName: 'Based Bingo V2',
+    appLogoUrl: `${appUrl}/icon.png`,
+    chainId: base.id,
+    preference: 'smartWalletOnly', // Enable smart wallet features
+  }),
+
+  // Additional connectors for broader compatibility
+  injected({ target: 'metaMask' }),
+];
+
+if (
+  process.env.NEXT_PUBLIC_WC_PROJECT_ID &&
+  !isFarcasterEnv &&
+  process.env.NEXT_PUBLIC_DISABLE_WALLETCONNECT !== '1'
+) {
+  connectorsList.push(
+    walletConnect({
+      projectId: process.env.NEXT_PUBLIC_WC_PROJECT_ID,
+      metadata: {
+        name: 'Based Bingo V2',
+        description: 'On-chain Bingo game with automatic win claiming',
+        url: appUrl,
+        icons: [`${appUrl}/icon.png`],
+      },
+      showQrModal: true,
+    }) as any
+  );
+} else {
+  if (typeof console !== 'undefined') {
+    console.log('🔒 WalletConnect disabled in this environment (Farcaster frame or disabled by env).');
+  }
+}
+
 // Enhanced wagmi configuration with paymaster support
 export const config = createConfig({
   chains: [base],
-  connectors: [
-    // Primary: Farcaster Mini App connector (EIP-5792 compliant)
-    miniAppConnector(),
-    
-    // Enhanced: Coinbase Wallet with ERC-4337 support
-    coinbaseWallet({
-      appName: 'Based Bingo V2',
-      appLogoUrl: `${appUrl}/icon.png`,
-      chainId: base.id,
-      preference: 'smartWalletOnly', // Enable smart wallet features
-    }),
-    
-    // Additional connectors for broader compatibility
-    injected({
-      target: 'metaMask',
-    }),
-    
-    // WalletConnect for mobile wallets - Fixed URL configuration
-    ...(process.env.NEXT_PUBLIC_WC_PROJECT_ID ? [
-      walletConnect({
-        projectId: process.env.NEXT_PUBLIC_WC_PROJECT_ID,
-        metadata: {
-          name: 'Based Bingo V2',
-          description: 'On-chain Bingo game with automatic win claiming',
-          url: appUrl, // Dynamic URL to match current domain
-          icons: [`${appUrl}/icon.png`],
-        },
-        showQrModal: true,
-      })
-    ] : []),
-  ],
+  connectors: connectorsList as any,
   
   // Enhanced storage for session persistence
   storage: createStorage({
