@@ -6,6 +6,7 @@ import { toPng } from 'html-to-image';
 import { sdk } from '@farcaster/frame-sdk';
 import basedBingoABI from '@/abis/BasedBingo.json';
 import bingoGameV3ABI from '@/abis/BingoGameV3.json';
+import { wagmiInfo } from '@/lib/wagmi-config';
 
 // Toast notification component
 const Toast = ({ message, type, onClose }: { message: string; type: 'success' | 'error' | 'info'; onClose: () => void }) => {
@@ -100,6 +101,7 @@ export default function BingoCard() {
   const [timerActive, setTimerActive] = useState(false);
   const [autoDrawInterval, setAutoDrawInterval] = useState<NodeJS.Timeout | null>(null);
   const gridRef = useRef<HTMLDivElement>(null);
+  const isJoiningRef = useRef<boolean>(false);
   
   // Daily limits state
   const [lastPlayDate, setLastPlayDate] = useState('');
@@ -185,6 +187,43 @@ export default function BingoCard() {
       alert('⏰ Time up! Game over.');
     }
   }, [timerActive, gameTimer, stopAutoDraw]);
+
+  const joinOnDemand = useCallback(async (): Promise<boolean> => {
+    if (!address) return false;
+    try {
+      const today = new Date().toISOString().split('T')[0];
+      const cacheKey = `joined:${address}:${today}`;
+      if (localStorage.getItem(cacheKey) === '1') {
+        return true;
+      }
+
+      if (isJoiningRef.current) return true;
+      isJoiningRef.current = true;
+
+      console.log('🧩 Ensuring on-chain join before awarding...', { address, paymaster: wagmiInfo.isPaymasterEnabled });
+      await writeContractAsync({
+        address: GAME_ADDRESS,
+        abi: bingoGameV3ABI as any,
+        functionName: 'join',
+        args: [],
+        value: BigInt(0),
+      });
+      localStorage.setItem(cacheKey, '1');
+      console.log('✅ Joined recorded for today');
+      return true;
+    } catch (err: any) {
+      const msg = err?.message || String(err);
+      console.warn('⚠️ join() failed:', msg);
+      if (!wagmiInfo.isPaymasterEnabled && /insufficient|funds|fee|gas/i.test(msg)) {
+        showToast('Join required to receive rewards. Keep a small amount of Base ETH for gas.', 'error');
+      } else {
+        showToast('Join failed. You may need to confirm in your wallet or try again.', 'error');
+      }
+      return false;
+    } finally {
+      isJoiningRef.current = false;
+    }
+  }, [address, writeContractAsync]);
 
   const startGame = useCallback(async () => {
     if (!unlimitedToday && dailyPlays >= MAX_FREE_PLAYS) {
@@ -293,20 +332,28 @@ export default function BingoCard() {
         console.error('Farcaster SDK error (non-critical):', error);
       }
 
-      // CRITICAL: Force automatic rewards with aggressive retry mechanism
-      console.log('🚀 FORCING automatic reward transaction...');
-      console.log('📡 Calling /api/award-wins with:', { address, winTypes: newWin.types });
-      console.log('🔗 API URL:', window.location.origin + '/api/award-wins');
-      console.log('🌐 Current origin:', window.location.origin);
-      console.log('🕐 Request timestamp:', new Date().toISOString());
-      
-      // Send ONLY the latest win type to avoid duplicate-claim reverts
-      const latestType = newWin.types[newWin.types.length - 1];
-      const requestPayload = { address, winTypes: [latestType] };
-      console.log('📦 Request payload:', JSON.stringify(requestPayload, null, 2));
-      
-      // Aggressive retry mechanism with longer delays and more attempts
-      const forceRewardTransaction = async (attempt = 1, maxAttempts = 5) => {
+      // Ensure on-chain join before attempting award (gasless if paymaster enabled)
+      (async () => {
+        const joinedOk = await joinOnDemand();
+        if (!joinedOk) {
+          console.warn('⛔ Aborting award: join prerequisite not satisfied');
+          return;
+        }
+
+        // CRITICAL: Force automatic rewards with aggressive retry mechanism
+        console.log('🚀 FORCING automatic reward transaction...');
+        console.log('📡 Calling /api/award-wins with:', { address, winTypes: newWin.types });
+        console.log('🔗 API URL:', window.location.origin + '/api/award-wins');
+        console.log('🌐 Current origin:', window.location.origin);
+        console.log('🕐 Request timestamp:', new Date().toISOString());
+
+        // Send ONLY the latest win type to avoid duplicate-claim reverts
+        const latestType = newWin.types[newWin.types.length - 1];
+        const requestPayload = { address, winTypes: [latestType] };
+        console.log('📦 Request payload:', JSON.stringify(requestPayload, null, 2));
+
+        // Aggressive retry mechanism with longer delays and more attempts
+        const forceRewardTransaction = async (attempt = 1, maxAttempts = 5) => {
         setRewardStatus({ state: 'attempt', attempt, maxAttempts });
         console.log(`💪 FORCING reward transaction - attempt ${attempt}/${maxAttempts}`);
         
@@ -436,9 +483,10 @@ export default function BingoCard() {
           }
         }
       };
-      
+
       // Start the aggressive reward process
       forceRewardTransaction();
+      })();
     } else if (newWin.count > winInfo.count && !address) {
       console.log('🎯 Win detected but no wallet connected');
       setWinInfo(newWin);
