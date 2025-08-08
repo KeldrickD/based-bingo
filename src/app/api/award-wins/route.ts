@@ -138,11 +138,7 @@ export async function POST(request: NextRequest) {
 
     // Diagnostics: oracle authorization
     let isOracle = false;
-    try {
-      isOracle = await contract.isAuthorizedOracle(signer.address);
-    } catch (e: any) {
-      // ignore if function not present
-    }
+    try { isOracle = await contract.isAuthorizedOracle(signer.address); } catch {}
 
     // Normalize to 3 encodings
     const normalizedStrings = normalizeWinTypesToStrings(winTypes);
@@ -150,14 +146,14 @@ export async function POST(request: NextRequest) {
     const normalizedUint8 = mapWinTypesToEnumIndices(normalizedStrings);
     const chosenGameId = typeof gameId === 'number' && gameId > 0 ? gameId : 1;
 
-    type Variant = { label: string; args: any[] };
+    type Variant = { label: string; sig: string; args: any[] };
     const variants: Variant[] = [
-      { label: 'str3', args: [address, normalizedStrings, chosenGameId] },
-      { label: 'str2', args: [address, normalizedStrings] },
-      { label: 'bytes3', args: [address, normalizedBytes32, chosenGameId] },
-      { label: 'bytes2', args: [address, normalizedBytes32] },
-      { label: 'uint3', args: [address, normalizedUint8, chosenGameId] },
-      { label: 'uint2', args: [address, normalizedUint8] },
+      { label: 'str3',  sig: 'awardWins(address,string[],uint256)', args: [address, normalizedStrings, chosenGameId] },
+      { label: 'str2',  sig: 'awardWins(address,string[])',         args: [address, normalizedStrings] },
+      { label: 'bytes3',sig: 'awardWins(address,bytes32[],uint256)',args: [address, normalizedBytes32, chosenGameId] },
+      { label: 'bytes2',sig: 'awardWins(address,bytes32[])',        args: [address, normalizedBytes32] },
+      { label: 'uint3', sig: 'awardWins(address,uint8[],uint256)',  args: [address, normalizedUint8, chosenGameId] },
+      { label: 'uint2', sig: 'awardWins(address,uint8[])',          args: [address, normalizedUint8] },
     ];
 
     // Preflight to find a working variant
@@ -165,9 +161,8 @@ export async function POST(request: NextRequest) {
     let lastError: any = null;
     for (const v of variants) {
       try {
-        await contract.awardWins.staticCall(...v.args);
-        selected = v;
-        break;
+        await (contract as any)[v.sig].staticCall(...v.args);
+        selected = v; break;
       } catch (e: any) {
         lastError = e;
       }
@@ -178,24 +173,24 @@ export async function POST(request: NextRequest) {
     }
 
     if (dryRun) {
-      return NextResponse.json({ success: true, message: 'Preflight success (dry run)', selectedVariant: selected.label, args: selected.args, isAuthorizedOracle: isOracle, signer: signer.address });
+      return NextResponse.json({ success: true, message: 'Preflight success (dry run)', selectedVariant: selected.label, selectedSignature: selected.sig, args: selected.args, isAuthorizedOracle: isOracle, signer: signer.address });
     }
 
     // Estimate gas and send
     let gasEstimate;
     try {
-      gasEstimate = await contract.awardWins.estimateGas(...selected.args);
+      gasEstimate = await (contract as any)[selected.sig].estimateGas(...selected.args);
     } catch (gasError: any) {
-      return NextResponse.json({ success: false, message: 'Gas estimation failed', details: gasError?.message, variant: selected.label, isAuthorizedOracle: isOracle, signer: signer.address }, { status: 500 });
+      return NextResponse.json({ success: false, message: 'Gas estimation failed', details: gasError?.message, variant: selected.label, signature: selected.sig, isAuthorizedOracle: isOracle, signer: signer.address }, { status: 500 });
     }
 
-    const tx = await contract.awardWins(...selected.args, { gasLimit: Math.max(Number(gasEstimate) * 2, 200_000) });
+    const tx = await (contract as any)[selected.sig](...selected.args, { gasLimit: Math.max(Number(gasEstimate) * 2, 200_000) });
     const receipt = await tx.wait();
 
     const processingTime = Date.now() - startTime;
     const totalRewards = 1000 * normalizedStrings.length;
 
-    return NextResponse.json({ success: true, message: `Rewards sent: ${normalizedStrings.join(' + ')}`, transactionHash: receipt.hash, blockNumber: receipt.blockNumber, playerAddress: address, totalRewards, processingTimeMs: processingTime, selectedVariant: selected.label, isAuthorizedOracle: isOracle, signer: signer.address });
+    return NextResponse.json({ success: true, message: `Rewards sent: ${normalizedStrings.join(' + ')}`, transactionHash: receipt.hash, blockNumber: receipt.blockNumber, playerAddress: address, totalRewards, processingTimeMs: processingTime, selectedVariant: selected.label, selectedSignature: selected.sig, isAuthorizedOracle: isOracle, signer: signer.address });
   } catch (error: any) {
     const processingTime = Date.now() - startTime;
     return NextResponse.json({ success: false, message: 'Failed to award wins', details: error?.message, processingTimeMs: processingTime }, { status: 500 });
