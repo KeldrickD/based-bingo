@@ -198,19 +198,19 @@ export default function BingoCard() {
 
     // Attempt on-chain join if wallet connected (V3 join is permissionless and required before award)
     if (address) {
-      try {
-        console.log('🎮 Joining on-chain game for address:', address);
-        await writeContract({
-          address: GAME_ADDRESS,
-          abi: bingoGameV3ABI as any,
-          functionName: 'join',
-          args: [],
-          value: BigInt(0) // Explicitly specify no payment required
-        });
+      // Make join() call non-blocking to prevent UI delays
+      writeContract({
+        address: GAME_ADDRESS,
+        abi: bingoGameV3ABI as any,
+        functionName: 'join',
+        args: [],
+        value: BigInt(0) // Explicitly specify no payment required
+      }).then(() => {
         console.log('✅ Joined on-chain game successfully');
-      } catch (err: any) {
+      }).catch((err: any) => {
         console.warn('⚠️ join() may have already been called or failed non-critically:', err?.message || err);
-      }
+      });
+      console.log('🎮 Join transaction initiated for address:', address);
     } else {
       console.log('👤 No wallet connected; starting local game only. Connect wallet to receive rewards.');
     }
@@ -499,7 +499,8 @@ export default function BingoCard() {
         address: TOKEN_ADDRESS,
         abi: basedBingoABI as any,
         functionName: 'approve',
-        args: [GAME_ADDRESS, BigInt(50 * Math.pow(10, 18))]
+        args: [GAME_ADDRESS, BigInt(50 * Math.pow(10, 18))],
+        value: BigInt(0) // No ETH payment required for token approval
       });
 
       // Wait for approval
@@ -510,7 +511,8 @@ export default function BingoCard() {
         address: GAME_ADDRESS,
         abi: bingoGameV3ABI as any,
         functionName: 'buyUnlimited',
-        args: []
+        args: [],
+        value: BigInt(0) // No ETH payment required - uses approved BINGO tokens
       });
 
       console.log('⏳ Transaction submitted, waiting for confirmation...');
