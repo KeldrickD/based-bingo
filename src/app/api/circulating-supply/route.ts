@@ -33,15 +33,16 @@ export async function GET() {
       )
     );
 
-    const nonCircTotal = balances.reduce((acc, v) => acc + v, 0n);
-    const circulating = totalSupply - nonCircTotal;
+    const nonCircTotal = balances.reduce((acc, v) => acc + v, BigInt(0));
+    const circulatingRaw = totalSupply - nonCircTotal;
+    const circulatingSafe = circulatingRaw < BigInt(0) ? BigInt(0) : circulatingRaw;
 
     const payload = {
       token_address: TOKEN_ADDRESS,
       network: 'base-mainnet',
       decimals: Number(decimals),
-      circulating_supply: (circulating < 0n ? 0n : circulating).toString(),
-      circulating_supply_formatted: formatUnits(circulating < 0n ? 0n : circulating, Number(decimals)),
+      circulating_supply: circulatingSafe.toString(),
+      circulating_supply_formatted: formatUnits(circulatingSafe, Number(decimals)),
       non_circulating_addresses: NON_CIRC_ADDRESSES,
       updated_at: new Date().toISOString(),
     };
