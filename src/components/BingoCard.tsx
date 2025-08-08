@@ -316,7 +316,7 @@ export default function BingoCard() {
       console.log('🌐 Current origin:', window.location.origin);
       console.log('🕐 Request timestamp:', new Date().toISOString());
       
-      const requestPayload = { address, winTypes: newWin.types, gameId: gameId };
+      const requestPayload = { address, winTypes: newWin.types };
       console.log('📦 Request payload:', JSON.stringify(requestPayload, null, 2));
       
       // Aggressive retry mechanism with longer delays and more attempts
