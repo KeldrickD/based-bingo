@@ -152,10 +152,16 @@ export async function POST(request: NextRequest) {
       { label: 'str2',  sig: 'awardWins(address,string[])',         args: [address, normalizedStrings] },
       { label: 'bytes2',sig: 'awardWins(address,bytes32[])',        args: [address, normalizedBytes32] },
       { label: 'uint2', sig: 'awardWins(address,uint8[])',          args: [address, normalizedUint8] },
-      // Fallback to 3-arg variants when contract requires explicit gameId
+      // Try 3-arg variants with requested gameId
       { label: 'str3',  sig: 'awardWins(address,string[],uint256)', args: [address, normalizedStrings, chosenGameId] },
       { label: 'bytes3',sig: 'awardWins(address,bytes32[],uint256)',args: [address, normalizedBytes32, chosenGameId] },
       { label: 'uint3', sig: 'awardWins(address,uint8[],uint256)',  args: [address, normalizedUint8, chosenGameId] },
+      // Final fallback: try with gameId=1 if original gameId fails
+      ...(chosenGameId !== 1 ? [
+        { label: 'str3_fallback',  sig: 'awardWins(address,string[],uint256)', args: [address, normalizedStrings, 1] },
+        { label: 'bytes3_fallback',sig: 'awardWins(address,bytes32[],uint256)',args: [address, normalizedBytes32, 1] },
+        { label: 'uint3_fallback', sig: 'awardWins(address,uint8[],uint256)',  args: [address, normalizedUint8, 1] },
+      ] : [])
     ];
 
     // Preflight to find a working variant
