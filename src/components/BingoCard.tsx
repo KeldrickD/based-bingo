@@ -196,12 +196,15 @@ export default function BingoCard() {
     if (address) {
       try {
         console.log('📝 Joining on-chain game session via contract.join()...');
+        showToast('Joining game on-chain...', 'info');
         await writeContract({
           address: GAME_ADDRESS,
           abi: bingoGameV3ABI as any,
           functionName: 'join',
           args: []
         });
+        // Give network time to mine the tx so the server-side staticCall won’t revert
+        await new Promise((r) => setTimeout(r, 8000));
         console.log('✅ Joined on-chain game session');
       } catch (joinError: any) {
         console.error('❌ join() failed (you can still play, but rewards may fail):', joinError);
