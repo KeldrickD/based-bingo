@@ -29,7 +29,7 @@ const Toast = ({ message, type, onClose }: { message: string; type: 'success' | 
 };
 
 const TOKEN_ADDRESS = '0xd5D90dF16CA7b11Ad852e3Bf93c0b9b774CEc047' as `0x${string}`;
-const GAME_ADDRESS = '0x4CE879376Dc50aBB1Eb8F236B76e8e5a724780Be' as `0x${string}`;
+const GAME_ADDRESS = '0x88eAbBdD2158D184f4cB1C39B612eABB48289907' as `0x${string}`;
 
 function generateBingoCard(): (number | string)[][] {
   const columnRanges = [

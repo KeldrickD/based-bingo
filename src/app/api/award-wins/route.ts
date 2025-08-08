@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { ethers } from 'ethers';
 
-// Complete BingoGameV3 ABI - you should replace this with the full ABI from your compiled contract
+// BingoGameV3 ABI (updated)
 const bingoGameV3ABI = [
   {
     "inputs": [],
@@ -20,11 +20,12 @@ const bingoGameV3ABI = [
   {
     "inputs": [
       {"internalType": "address", "name": "player", "type": "address"},
-      {"internalType": "string[]", "name": "winTypes", "type": "string[]"}
+      {"internalType": "string[]", "name": "winTypes", "type": "string[]"},
+      {"internalType": "uint256", "name": "gameId", "type": "uint256"}
     ],
     "name": "awardWins",
     "outputs": [],
-    "stateMutability": "nonpayable", 
+    "stateMutability": "nonpayable",
     "type": "function"
   },
   {
@@ -43,6 +44,19 @@ const bingoGameV3ABI = [
     "outputs": [
       {"internalType": "uint256", "name": "_totalGamesPlayed", "type": "uint256"},
       {"internalType": "uint256", "name": "_contractBalance", "type": "uint256"}
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {"internalType": "uint256", "name": "gameId", "type": "uint256"},
+      {"internalType": "address", "name": "player", "type": "address"},
+      {"internalType": "bytes32", "name": "winKey", "type": "bytes32"}
+    ],
+    "name": "hasClaimedWin",
+    "outputs": [
+      {"internalType": "bool", "name": "", "type": "bool"}
     ],
     "stateMutability": "view",
     "type": "function"
@@ -68,7 +82,7 @@ const bingoGameV3ABI = [
   }
 ];
 
-const GAME_ADDRESS = '0x4CE879376Dc50aBB1Eb8F236B76e8e5a724780Be';
+const GAME_ADDRESS = '0x88eAbBdD2158D184f4cB1C39B612eABB48289907';
 const BASE_RPC_URL = 'https://mainnet.base.org';
 
 function normalizeWinTypes(winTypes: string[]): string[] {
@@ -241,18 +255,8 @@ export async function POST(request: NextRequest) {
     // Create contract instance
     console.log('📋 Creating contract instance...');
     const contract = new ethers.Contract(GAME_ADDRESS, bingoGameV3ABI, signer);
-    // Also prepare a 3-arg ABI variant for probing if needed
-    const bingoGameV3ABI_3ARG = [
-      { "inputs": [], "name": "join", "outputs": [], "stateMutability": "nonpayable", "type": "function" },
-      { "inputs": [], "name": "buyUnlimited", "outputs": [], "stateMutability": "nonpayable", "type": "function" },
-      { "inputs": [
-          {"internalType": "address", "name": "player", "type": "address"},
-          {"internalType": "string[]", "name": "winTypes", "type": "string[]"},
-          {"internalType": "uint256", "name": "gameId", "type": "uint256"}
-        ], "name": "awardWins", "outputs": [], "stateMutability": "nonpayable", "type": "function" },
-      { "inputs": [], "name": "owner", "outputs": [{"internalType": "address", "name": "", "type": "address"}], "stateMutability": "view", "type": "function" }
-    ];
-    const contract3 = new ethers.Contract(GAME_ADDRESS, bingoGameV3ABI_3ARG, signer);
+    // Our ABI already supports 3-arg awardWins
+    const contract3 = contract as any;
 
     // Try to read contract owner for diagnostics ONLY (do not enforce)
     let contractOwner: string | null = null;
