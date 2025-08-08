@@ -189,6 +189,17 @@ export default function BingoCard() {
     }
   }, [timerActive, gameTimer, stopAutoDraw]);
 
+  // Auto-join once when wallet connects (gasless if configured)
+  useEffect(() => {
+    if (!address) return;
+    const today = new Date().toISOString().split('T')[0];
+    const cacheKey = `joined:${address}:${today}`;
+    const disabledKey = `autoJoinDisabled:${address}:${today}`;
+    if (localStorage.getItem(cacheKey) === '1' || localStorage.getItem(disabledKey) === '1') return;
+    // Fire and forget; joinOnDemand already handles toasts and caching
+    joinOnDemand();
+  }, [address, joinOnDemand]);
+
   const joinOnDemand = useCallback(async (): Promise<boolean> => {
     if (!address) return false;
     try {
@@ -702,8 +713,8 @@ export default function BingoCard() {
       {/* Game Controls */}
       <div className="flex justify-center mb-4">
         <div className="flex flex-col gap-2 items-center">
-          <button
-            onClick={startGame}
+        <button
+          onClick={startGame}
             disabled={!unlimitedToday && dailyPlays >= MAX_FREE_PLAYS}
             className={`px-6 py-3 rounded-lg font-bold text-white transition-colors ${
               !unlimitedToday && dailyPlays >= MAX_FREE_PLAYS
@@ -713,17 +724,7 @@ export default function BingoCard() {
           >
             {!unlimitedToday && dailyPlays >= MAX_FREE_PLAYS ? 'Daily Plays Used' : 'New Game'}
           </button>
-          {address && (
-            <button
-              onClick={async () => {
-                const ok = await joinOnDemand();
-                if (ok) showToast('✅ Rewards enabled for today!', 'success');
-              }}
-              className="text-xs underline text-coinbase-blue hover:text-blue-700"
-            >
-              Enable Rewards (Join)
-            </button>
-          )}
+          {/* Auto-join runs in the background; no extra button needed for UX */}
         </div>
       </div>
 
