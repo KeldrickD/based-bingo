@@ -62,8 +62,14 @@ export default function WhitepaperPage() {
         <li><b>Unlimited Day Pass</b>: 50 BINGO</li>
         <li><b>Burn Rate on Entry Fee</b>: 2% burned to <code>0x000000000000000000000000000000000000dEaD</code> (no effect in F2P mode)</li>
         <li><b>Permissionless Rewards</b>: Anyone can call <code>awardWins(winner, [winTypes], gameId)</code>;
-          duplicate-safe per win type per game.</li>
-        <li><b>Per-session gameId</b>: The frontend assigns a unique gameId each session and includes it with awards to avoid duplicate-claim reverts across sessions.</li>
+          duplicate-safe per win type per game session.</li>
+        <li><b>Multi-Game Support</b>: Each new game generates a unique <code>gameId</code> (timestamp-based), allowing players to:
+          <ul>
+            <li>Win multiple times within the same game (line → double line → full house)</li>
+            <li>Play unlimited games per day with fresh reward opportunities</li>
+            <li>Avoid duplicate-claim reverts across different game sessions</li>
+          </ul>
+        </li>
       </ul>
 
       <h3>Economic Flow per Join</h3>
