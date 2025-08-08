@@ -10,7 +10,7 @@ const DOMAIN = {
   name: 'BingoGameV2',
   version: '1',
   chainId: 8453, // Base Mainnet
-  verifyingContract: '0x36Fb73233f8BB562a80fcC3ab9e6e011Cfe091f5' as `0x${string}`,
+  verifyingContract: (process.env.GAME_ADDRESS as `0x${string}`) || '0xd2247A65869928e34D59C1AA7956b5b031aD2D90',
 } as const;
 
 // EIP-712 Types for Win Claims
@@ -190,7 +190,7 @@ export async function POST(request: NextRequest) {
       name: 'BasedBingo',
       version: '1',
       chainId: 8453, // Base mainnet
-      verifyingContract: process.env.GAME_CONTRACT_ADDRESS || '0x36Fb73233f8BB562a80fcC3ab9e6e011Cfe091f5',
+      verifyingContract: process.env.GAME_ADDRESS || '0xd2247A65869928e34D59C1AA7956b5b031aD2D90',
     };
 
     const types = {

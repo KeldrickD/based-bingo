@@ -22,7 +22,7 @@ export default function WhitepaperPage() {
       <ul>
         <li><b>Network</b>: Base Mainnet</li>
         <li><b>Token (BINGO)</b>: <code>0xd5D90dF16CA7b11Ad852e3Bf93c0b9b774CEc047</code></li>
-        <li><b>Game (BingoGameV3)</b>: <code>0x88eAbBdD2158D184f4cB1C39B612eABB48289907</code></li>
+        <li><b>Game (BingoGameV3)</b>: <code>{process.env.NEXT_PUBLIC_GAME_ADDRESS || '0xd2247A65869928e34D59C1AA7956b5b031aD2D90'}</code></li>
         <li><b>Owner (on-chain)</b>: <code>0x86EA71C17B76169Fce3Cd12C94C3CdCaD2C72844</code></li>
       </ul>
 

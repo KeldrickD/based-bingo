@@ -132,8 +132,8 @@ export async function GET(): Promise<NextResponse<HealthStatus>> {
         analytics: analyticsStatus,
       },
       contracts: {
-        gameContract: '0x36Fb73233f8BB562a80fcC3ab9e6e011Cfe091f5',
-        tokenContract: '0xd5D90dF16CA7b11Ad852e3Bf93c0b9b774CEc047',
+        gameContract: process.env.GAME_ADDRESS || '0xd2247A65869928e34D59C1AA7956b5b031aD2D90',
+        tokenContract: process.env.TOKEN_ADDRESS || '0xd5D90dF16CA7b11Ad852e3Bf93c0b9b774CEc047',
         network: 'Base Mainnet',
       },
       performance: {
@@ -171,8 +171,8 @@ export async function GET(): Promise<NextResponse<HealthStatus>> {
         analytics: 'down',
       },
       contracts: {
-        gameContract: '0x36Fb73233f8BB562a80fcC3ab9e6e011Cfe091f5',
-        tokenContract: '0xd5D90dF16CA7b11Ad852e3Bf93c0b9b774CEc047',
+        gameContract: process.env.GAME_ADDRESS || '0xd2247A65869928e34D59C1AA7956b5b031aD2D90',
+        tokenContract: process.env.TOKEN_ADDRESS || '0xd5D90dF16CA7b11Ad852e3Bf93c0b9b774CEc047',
         network: 'Base Mainnet',
       },
       performance: {
