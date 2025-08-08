@@ -189,16 +189,7 @@ export default function BingoCard() {
     }
   }, [timerActive, gameTimer, stopAutoDraw]);
 
-  // Auto-join once when wallet connects (gasless if configured)
-  useEffect(() => {
-    if (!address) return;
-    const today = new Date().toISOString().split('T')[0];
-    const cacheKey = `joined:${address}:${today}`;
-    const disabledKey = `autoJoinDisabled:${address}:${today}`;
-    if (localStorage.getItem(cacheKey) === '1' || localStorage.getItem(disabledKey) === '1') return;
-    // Fire and forget; joinOnDemand already handles toasts and caching
-    joinOnDemand();
-  }, [address, joinOnDemand]);
+  // (moved below joinOnDemand declaration)
 
   const joinOnDemand = useCallback(async (): Promise<boolean> => {
     if (!address) return false;
@@ -244,6 +235,17 @@ export default function BingoCard() {
       isJoiningRef.current = false;
     }
   }, [address, writeContractAsync]);
+
+  // Auto-join once when wallet connects (gasless if configured)
+  useEffect(() => {
+    if (!address) return;
+    const today = new Date().toISOString().split('T')[0];
+    const cacheKey = `joined:${address}:${today}`;
+    const disabledKey = `autoJoinDisabled:${address}:${today}`;
+    if (localStorage.getItem(cacheKey) === '1' || localStorage.getItem(disabledKey) === '1') return;
+    // Fire and forget; joinOnDemand already handles toasts and caching
+    joinOnDemand();
+  }, [address, joinOnDemand]);
 
   const startGame = useCallback(async () => {
     if (!unlimitedToday && dailyPlays >= MAX_FREE_PLAYS) {
