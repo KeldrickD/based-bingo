@@ -29,7 +29,7 @@ const Toast = ({ message, type, onClose }: { message: string; type: 'success' | 
 };
 
 const TOKEN_ADDRESS = '0xd5D90dF16CA7b11Ad852e3Bf93c0b9b774CEc047' as `0x${string}`;
-const GAME_ADDRESS = '0x4CE879376Dc50aBB1Eb8F236B76e8e5a724780Be' as `0x${string}`;
+const GAME_ADDRESS = '0x88eAbBdD2158D184f4cB1C39B612eABB48289907' as `0x${string}`;
 
 function generateBingoCard(): (number | string)[][] {
   const columnRanges = [
@@ -191,7 +191,25 @@ export default function BingoCard() {
       return;
     }
 
-    console.log('🎮 Starting new FREE game (no contract join required)...');
+    // Attempt on-chain join if wallet connected (V3 join is permissionless and required before award)
+    if (address) {
+      try {
+        console.log('🎮 Joining on-chain game for address:', address);
+        await writeContract({
+          address: GAME_ADDRESS,
+          abi: bingoGameV3ABI as any,
+          functionName: 'join',
+          args: []
+        });
+        console.log('✅ Joined on-chain game successfully');
+      } catch (err: any) {
+        console.warn('⚠️ join() may have already been called or failed non-critically:', err?.message || err);
+      }
+    } else {
+      console.log('👤 No wallet connected; starting local game only. Connect wallet to receive rewards.');
+    }
+
+    console.log('🎮 Starting game session...');
     resetGame();
     setTimerActive(true);
     startAutoDraw();
@@ -207,7 +225,7 @@ export default function BingoCard() {
     if (!address) {
       console.log('🎮 Demo game started - connect wallet for automatic rewards!');
     } else {
-      console.log('🎮 Free game started with wallet connected - ready for automatic rewards!');
+      console.log('🎮 Game started with wallet connected - ready for automatic rewards!');
     }
   }, [unlimitedToday, dailyPlays, resetGame, startAutoDraw, address]);
 
