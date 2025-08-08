@@ -89,6 +89,12 @@ export default function BingoCard() {
   const [unlimitedToday, setUnlimitedToday] = useState(false);
   const [dailyPlays, setDailyPlays] = useState(0);
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' | 'info' } | null>(null);
+  const [rewardStatus, setRewardStatus] = useState<
+    | { state: 'idle' }
+    | { state: 'attempt'; attempt: number; maxAttempts: number }
+    | { state: 'success'; txHash: string; totalRewards: number }
+    | { state: 'error'; message: string; details?: string; diag?: any }
+  >({ state: 'idle' });
   const [gameTimer, setGameTimer] = useState(120);
   const [timerActive, setTimerActive] = useState(false);
   const [autoDrawInterval, setAutoDrawInterval] = useState<NodeJS.Timeout | null>(null);
@@ -291,6 +297,7 @@ export default function BingoCard() {
       
       // Aggressive retry mechanism with longer delays and more attempts
       const forceRewardTransaction = async (attempt = 1, maxAttempts = 5) => {
+        setRewardStatus({ state: 'attempt', attempt, maxAttempts });
         console.log(`💪 FORCING reward transaction - attempt ${attempt}/${maxAttempts}`);
         
         try {
@@ -325,16 +332,32 @@ export default function BingoCard() {
           });
           
           if (!response.ok) {
-            const text = await response.text();
+            // Try to extract structured JSON details
+            let text = '';
+            let json: any = null;
+            try {
+              json = await response.json();
+            } catch (e) {
+              try { text = await response.text(); } catch {}
+            }
             console.error('📨 Error response body:', text);
-            console.error('📨 Full error details:', {
+            console.error('�� Full error details:', {
               status: response.status,
               statusText: response.statusText,
-              body: text,
+              body: json || text,
               url: response.url,
               attempt
             });
-            throw new Error(`Server error: ${response.status} ${response.statusText} - ${text}`);
+            const msg = json?.message || json?.details || text || 'Unknown server error';
+            // Update UI-visible status for mobile envs
+            setRewardStatus({
+              state: 'error',
+              message: `Server error: ${response.status} ${response.statusText}`,
+              details: msg?.toString().slice(0, 220),
+              diag: json?.diagnostic || undefined,
+            });
+            showToast((msg || '').toString().slice(0, 160) || 'Reward failed', 'error');
+            throw new Error(`Server error: ${response.status} ${response.statusText} - ${msg}`);
           }
           
           const data = await response.json();
@@ -352,6 +375,7 @@ export default function BingoCard() {
             });
             
             showToast(`🎉 ${rewardAmount} $BINGO awarded! Tx: ${data.transactionHash?.slice(0, 10)}...`, 'success');
+            setRewardStatus({ state: 'success', txHash: data.transactionHash, totalRewards: data.totalRewards || rewardAmount });
             return true;
           } else {
             console.error('❌ API returned success: false:', data);
@@ -362,7 +386,10 @@ export default function BingoCard() {
               details: data.details,
               attempt
             });
-            throw new Error(data.message || 'Unknown server error');
+            const msg = data.message || data.details || 'Unknown server error';
+            setRewardStatus({ state: 'error', message: msg?.toString().slice(0, 220), details: data.details, diag: { errorCode: data.errorCode, errorReason: data.errorReason } });
+            showToast(msg.toString().slice(0, 160), 'error');
+            throw new Error(msg);
           }
         } catch (error: any) {
           console.error(`❌ Reward attempt ${attempt} failed:`, error);
@@ -392,6 +419,9 @@ export default function BingoCard() {
             });
             
             showToast(`❌ Failed to send rewards after ${maxAttempts} attempts. Contact support!`, 'error');
+            if (rewardStatus.state !== 'error') {
+              setRewardStatus({ state: 'error', message: `Failed after ${maxAttempts} attempts`, details: error?.message?.toString().slice(0, 220) });
+            }
             return false;
           }
         }
@@ -510,6 +540,40 @@ export default function BingoCard() {
           type={toast.type}
           onClose={closeToast}
         />
+      )}
+
+      {/* Reward Status (mobile-visible) */}
+      {rewardStatus.state !== 'idle' && (
+        <div className="w-full rounded-lg border p-3 text-sm">
+          {rewardStatus.state === 'attempt' && (
+            <div>
+              <div className="font-semibold">Awarding Rewards...</div>
+              <div>Attempt {rewardStatus.attempt}/{rewardStatus.maxAttempts}</div>
+            </div>
+          )}
+          {rewardStatus.state === 'success' && (
+            <div className="text-green-700">
+              <div className="font-semibold">Rewards Sent</div>
+              <div>{rewardStatus.totalRewards} $BINGO</div>
+              <div>Tx: {rewardStatus.txHash?.slice(0, 10)}...</div>
+            </div>
+          )}
+          {rewardStatus.state === 'error' && (
+            <div className="text-red-700">
+              <div className="font-semibold">Reward Failed</div>
+              <div>{rewardStatus.message}</div>
+              {rewardStatus.details && (<div className="mt-1 text-xs text-red-600">{rewardStatus.details}</div>)}
+              {rewardStatus.diag && (
+                <div className="mt-2 text-xs text-gray-600">
+                  {rewardStatus.diag.signerAddress && (<div>Signer: {String(rewardStatus.diag.signerAddress).slice(0,6)}...{String(rewardStatus.diag.signerAddress).slice(-4)}</div>)}
+                  {rewardStatus.diag.contractOwner && (<div>Owner: {String(rewardStatus.diag.contractOwner).slice(0,6)}...{String(rewardStatus.diag.contractOwner).slice(-4)}</div>)}
+                  {rewardStatus.diag.player && (<div>Player: {String(rewardStatus.diag.player).slice(0,6)}...{String(rewardStatus.diag.player).slice(-4)}</div>)}
+                  {rewardStatus.diag.normalized && (<div>Types: {Array.isArray(rewardStatus.diag.normalized) ? rewardStatus.diag.normalized.join(', ') : String(rewardStatus.diag.normalized)}</div>)}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
       )}
 
       {/* Connection Status */}
