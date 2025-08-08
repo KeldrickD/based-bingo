@@ -191,7 +191,23 @@ export default function BingoCard() {
       return;
     }
 
-    console.log('🎮 Starting new FREE game (no contract join required)...');
+    console.log('🎮 Starting new FREE game...');
+    // If wallet is connected, attempt to join on-chain game session so awards won't revert
+    if (address) {
+      try {
+        console.log('📝 Joining on-chain game session via contract.join()...');
+        await writeContract({
+          address: GAME_ADDRESS,
+          abi: bingoGameV3ABI as any,
+          functionName: 'join',
+          args: []
+        });
+        console.log('✅ Joined on-chain game session');
+      } catch (joinError: any) {
+        console.error('❌ join() failed (you can still play, but rewards may fail):', joinError);
+        showToast('Join failed; you can still play, but rewards may not send.', 'error');
+      }
+    }
     resetGame();
     setTimerActive(true);
     startAutoDraw();
