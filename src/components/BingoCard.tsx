@@ -76,7 +76,7 @@ const checkWin = (marked: Set<string>) => {
 
 export default function BingoCard() {
   const { address } = useAccount();
-  const { writeContract } = useWriteContract();
+  const { writeContract, writeContractAsync } = useWriteContract();
   
   // Game state
   const [card, setCard] = useState<(number | string)[][]>([]);
@@ -200,16 +200,17 @@ export default function BingoCard() {
     if (address) {
       try {
         console.log('🎮 Joining on-chain game for address:', address);
-        writeContract({
+        await writeContractAsync({
           address: GAME_ADDRESS,
           abi: bingoGameV3ABI as any,
           functionName: 'join',
           args: [],
           value: BigInt(0) // Explicitly specify no payment required
         });
-        console.log('✅ Join transaction initiated successfully');
+        console.log('✅ Successfully joined on-chain game');
       } catch (err: any) {
-        console.warn('⚠️ join() may have failed:', err?.message || err);
+        console.warn('⚠️ join() failed or already called:', err?.message || err);
+        // Continue anyway - join might have been called already
       }
     } else {
       console.log('👤 No wallet connected; starting local game only. Connect wallet to receive rewards.');
@@ -495,7 +496,7 @@ export default function BingoCard() {
       console.log('📝 This requires: 50 $BINGO tokens + ETH for gas fees');
       
       // First approve the tokens
-      await writeContract({
+      await writeContractAsync({
         address: TOKEN_ADDRESS,
         abi: basedBingoABI as any,
         functionName: 'approve',
@@ -507,7 +508,7 @@ export default function BingoCard() {
       await new Promise(resolve => setTimeout(resolve, 3000));
 
       // Then buy unlimited
-      await writeContract({
+      await writeContractAsync({
         address: GAME_ADDRESS,
         abi: bingoGameV3ABI as any,
         functionName: 'buyUnlimited',
