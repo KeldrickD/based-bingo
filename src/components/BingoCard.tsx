@@ -227,6 +227,14 @@ export default function BingoCard() {
     }
   }, [address, writeContractAsync]);
 
+  const normalizeWinType = (t: string): string => {
+    const s = t.toLowerCase();
+    if (s.includes('double')) return 'DOUBLE_LINE';
+    if (s.includes('full')) return 'FULL_HOUSE';
+    if (s.includes('line')) return 'LINE';
+    return t.toUpperCase();
+  };
+
   // Auto-join once when wallet connects (gasless if configured)
   useEffect(() => {
     if (!address) return;
@@ -361,7 +369,7 @@ export default function BingoCard() {
 
         // Send ONLY the latest win type to avoid duplicate-claim reverts
         const latestType = newWin.types[newWin.types.length - 1];
-        const requestPayload = { address, winTypes: [latestType] };
+        const requestPayload = { address, winTypes: [latestType], gameId: gameId ?? Math.floor(Date.now()/1000) };
         console.log('📦 Request payload:', JSON.stringify(requestPayload, null, 2));
 
         // Aggressive retry mechanism with longer delays and more attempts
@@ -417,6 +425,24 @@ export default function BingoCard() {
               url: response.url,
               attempt
             });
+
+            // Client-side fallback: some contracts require player msg.sender
+            try {
+              const latestTypeNorm = normalizeWinType(latestType);
+              console.log('🛠️ Client fallback: wallet awardWins', latestTypeNorm);
+              await writeContractAsync({
+                address: GAME_ADDRESS,
+                abi: bingoGameV3ABI as any,
+                functionName: 'awardWins',
+                args: [address, [latestTypeNorm]],
+                value: BigInt(0),
+              });
+              showToast(`🎉 ${rewardAmount} $BINGO awarded! (client)`, 'success');
+              setRewardStatus({ state: 'success', txHash: 'client', totalRewards: rewardAmount });
+              return true;
+            } catch (fallbackErr: any) {
+              console.error('❌ Client fallback failed:', fallbackErr?.message || fallbackErr);
+            }
             const msg = json?.message || json?.details || text || 'Unknown server error';
             // Update UI-visible status for mobile envs
             setRewardStatus({
