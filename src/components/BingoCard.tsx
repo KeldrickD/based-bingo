@@ -203,13 +203,18 @@ export default function BingoCard() {
       isJoiningRef.current = true;
 
       console.log('🧩 Ensuring on-chain join before awarding...', { address, paymaster: wagmiInfo.isPaymasterEnabled });
-      await writeContractAsync({
-        address: GAME_ADDRESS,
-        abi: bingoGameV3ABI as any,
-        functionName: 'join',
-        args: [],
-        value: BigInt(0),
-      });
+      try {
+        await writeContractAsync({
+          address: GAME_ADDRESS,
+          abi: bingoGameV3ABI as any,
+          functionName: 'join',
+          args: [],
+          value: BigInt(0),
+        });
+      } catch (e: any) {
+        // If join prompts for token transfer/fee or is blocked, skip and let 2-arg awardWins handle session
+        console.warn('join() skipped due to wallet error; proceeding without explicit join');
+      }
       localStorage.setItem(cacheKey, '1');
       console.log('✅ Joined recorded for today');
       return true;
@@ -369,7 +374,7 @@ export default function BingoCard() {
 
         // Send ONLY the latest win type to avoid duplicate-claim reverts
         const latestType = newWin.types[newWin.types.length - 1];
-        const requestPayload = { address, winTypes: [latestType], gameId: gameId ?? Math.floor(Date.now()/1000) };
+        const requestPayload = { address, winTypes: [latestType] };
         console.log('📦 Request payload:', JSON.stringify(requestPayload, null, 2));
 
         // Aggressive retry mechanism with longer delays and more attempts

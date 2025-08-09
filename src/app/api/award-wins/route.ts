@@ -148,14 +148,14 @@ export async function POST(request: NextRequest) {
 
     type Variant = { label: string; sig: string; args: any[] };
     const variants: Variant[] = [
-      // Prefer 3-arg signatures first so each game session is unique
-      { label: 'str3',  sig: 'awardWins(address,string[],uint256)', args: [address, normalizedStrings, chosenGameId] },
-      { label: 'bytes3',sig: 'awardWins(address,bytes32[],uint256)',args: [address, normalizedBytes32, chosenGameId] },
-      { label: 'uint3', sig: 'awardWins(address,uint8[],uint256)',  args: [address, normalizedUint8, chosenGameId] },
-      // Fallbacks
+      // Prefer 2-arg signatures first so contract derives the correct session and avoids mismatched gameId
       { label: 'str2',  sig: 'awardWins(address,string[])',         args: [address, normalizedStrings] },
       { label: 'bytes2',sig: 'awardWins(address,bytes32[])',        args: [address, normalizedBytes32] },
       { label: 'uint2', sig: 'awardWins(address,uint8[])',          args: [address, normalizedUint8] },
+      // Fallbacks with explicit gameId when required
+      { label: 'str3',  sig: 'awardWins(address,string[],uint256)', args: [address, normalizedStrings, chosenGameId] },
+      { label: 'bytes3',sig: 'awardWins(address,bytes32[],uint256)',args: [address, normalizedBytes32, chosenGameId] },
+      { label: 'uint3', sig: 'awardWins(address,uint8[],uint256)',  args: [address, normalizedUint8, chosenGameId] },
     ];
 
     // Preflight to find a working variant
