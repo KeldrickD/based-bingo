@@ -34,6 +34,14 @@ export async function GET() {
       signature: "r+PRsIWuo4wnxoxWcnlfVzEY9OkD9KGGk7Mj+Nm7BDoN2UjsYUnPEnETdld5M2SS5bbAhPF7028NsK3o4iHtyBw="
     
     },
+    frame: {
+      version: "next",
+      name: "Based Bingo",
+      iconUrl: "https://basedbingo.xyz/icon.png",
+      splashImageUrl: "https://basedbingo.xyz/splash.png",
+      splashBackgroundColor: "#0052FF",
+      homeUrl: "https://basedbingo.xyz"
+    },
     baseBuilder: {
       allowedAddresses: [
         "0x9AA1789957D7b2A256d44C30c015cB3b1f91Ad18"
