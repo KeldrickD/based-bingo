@@ -32,6 +32,12 @@ export async function GET() {
       header: "eyJmaWQiOjEwNDUwNDIsInR5cGUiOiJhdXRoIiwia2V5IjoiMHgyZTM3MkEyNzFkQjI3NWNlMDRDOTdkM2RlNWZBMUIzM0QzZUJFNmRFIn0",
       payload: "eyJkb21haW4iOiJiYXNlZGJpbmdvLnh5eiJ9",
       signature: "r+PRsIWuo4wnxoxWcnlfVzEY9OkD9KGGk7Mj+Nm7BDoN2UjsYUnPEnETdld5M2SS5bbAhPF7028NsK3o4iHtyBw="
+    
+    },
+    baseBuilder: {
+      allowedAddresses: [
+        "0x9AA1789957D7b2A256d44C30c015cB3b1f91Ad18"
+      ]
     }
   };
   
