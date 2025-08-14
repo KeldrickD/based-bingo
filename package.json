@@ -3,9 +3,9 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev --turbopack",
-    "build": "next build",
-    "start": "next start",
+    "dev": "next dev --turbopack && node public/index.js" ,
+    "build": "next build && node public/index.js",
+    "start": "next start && node public/index.js",
     "lint": "next lint"
   },
   "dependencies": {

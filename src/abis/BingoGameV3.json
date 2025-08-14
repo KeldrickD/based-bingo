@@ -15,12 +15,13 @@
   },
   {
     "inputs": [
-      {"internalType": "address", "name": "player", "type": "address"},
-      {"internalType": "string[]", "name": "winTypes", "type": "string[]"}
+      {"internalType": "address", "name": "winner", "type": "address"},
+      {"internalType": "uint8[]", "name": "winTypes", "type": "uint8[]"},
+      {"internalType": "uint256", "name": "gameId", "type": "uint256"}
     ],
     "name": "awardWins",
     "outputs": [],
-    "stateMutability": "nonpayable", 
+    "stateMutability": "nonpayable",
     "type": "function"
   },
   {
@@ -40,6 +41,28 @@
     "name": "awardWeeklyChallenge",
     "outputs": [],
     "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {"internalType": "address", "name": "player", "type": "address"}
+    ],
+    "name": "isUnlimitedToday",
+    "outputs": [
+      {"internalType": "bool", "name": "", "type": "bool"}
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {"internalType": "address", "name": "o", "type": "address"}
+    ],
+    "name": "isAuthorizedOracle",
+    "outputs": [
+      {"internalType": "bool", "name": "", "type": "bool"}
+    ],
+    "stateMutability": "view",
     "type": "function"
   }
 ] 

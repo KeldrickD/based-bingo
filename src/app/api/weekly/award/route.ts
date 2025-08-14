@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { ethers } from 'ethers';
 import bingoGameV3ABI from '@/abis/BingoGameV3.json';
 
-const GAME_ADDRESS = (process.env.GAME_ADDRESS as string) || process.env.NEXT_PUBLIC_GAME_ADDRESS || '';
+const GAME_ADDRESS = (process.env.GAME_ADDRESS as string) || process.env.NEXT_PUBLIC_GAME_ADDRESS || '0x28BE1BD4267EEE7551eC256A6b1a034D559faeC0';
 const BASE_RPC_URL = process.env.NEXT_PUBLIC_CDP_RPC || 'https://mainnet.base.org';
 
 export async function POST(request: NextRequest) {
