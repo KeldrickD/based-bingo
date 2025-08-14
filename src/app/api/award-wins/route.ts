@@ -118,6 +118,13 @@ export async function POST(request: NextRequest) {
   const startTime = Date.now();
   try {
     const requestBody = await request.json();
+    // Optional Mini App auth enforcement
+    if (process.env.REQUIRE_MINIAPP_AUTH === '1') {
+      const idToken = request.headers.get('x-action-id-token') || request.headers.get('X-Action-Id-Token');
+      if (!idToken) {
+        return NextResponse.json({ success: false, message: 'Unauthorized: missing miniapp auth token' }, { status: 401 });
+      }
+    }
     const { address, winTypes, gameId, dryRun } = requestBody as { address: string; winTypes: string[]; gameId?: number; dryRun?: boolean };
 
     if (!address || !winTypes || !Array.isArray(winTypes) || winTypes.length === 0) {

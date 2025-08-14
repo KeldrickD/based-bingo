@@ -1,10 +1,10 @@
 'use client';
 
 import { MiniKitProvider as Provider } from '@coinbase/onchainkit/minikit';
+import { base } from 'wagmi/chains';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { WagmiProvider } from 'wagmi';
 import { config } from '../lib/wagmi-config';
-import { base } from 'wagmi/chains';
 import { useState, useEffect, ReactNode } from 'react';
 
 const queryClient = new QueryClient({

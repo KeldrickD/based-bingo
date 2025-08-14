@@ -1,7 +1,7 @@
 import { createConfig, http, cookieStorage, createStorage } from 'wagmi';
 import { base } from 'wagmi/chains';
 import { farcasterMiniApp as miniAppConnector } from '@farcaster/miniapp-wagmi-connector';
-import { coinbaseWallet, injected, walletConnect } from 'wagmi/connectors';
+import { coinbaseWallet, injected } from 'wagmi/connectors';
 
 // Enhanced RPC configuration with fallback and monitoring
 const CDP_RPC = process.env.NEXT_PUBLIC_CDP_RPC;
@@ -46,7 +46,7 @@ const appUrl = getAppUrl();
 
 const isFarcasterEnv = detectFarcaster();
 
-// Build connectors with Farcaster-aware gating for WalletConnect
+// Build connectors (exclude WalletConnect to satisfy Farcaster CSP)
 const connectorsList = [
   // Primary: Farcaster Mini App connector (EIP-5792 compliant)
   miniAppConnector(),
@@ -62,29 +62,6 @@ const connectorsList = [
   // Additional connectors for broader compatibility
   injected({ target: 'metaMask' }),
 ];
-
-if (
-  process.env.NEXT_PUBLIC_WC_PROJECT_ID &&
-  !isFarcasterEnv &&
-  process.env.NEXT_PUBLIC_DISABLE_WALLETCONNECT !== '1'
-) {
-  connectorsList.push(
-    walletConnect({
-      projectId: process.env.NEXT_PUBLIC_WC_PROJECT_ID,
-      metadata: {
-        name: 'Based Bingo V2',
-        description: 'On-chain Bingo game with automatic win claiming',
-        url: appUrl,
-        icons: [`${appUrl}/icon.png`],
-      },
-      showQrModal: true,
-    }) as any
-  );
-} else {
-  if (typeof console !== 'undefined') {
-    console.log('🔒 WalletConnect disabled in this environment (Farcaster frame or disabled by env).');
-  }
-}
 
 // Enhanced wagmi configuration with paymaster support
 export const config = createConfig({

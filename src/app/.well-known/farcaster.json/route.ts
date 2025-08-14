@@ -5,7 +5,7 @@ export async function GET() {
     miniapp: {
       version: "1",
       name: "Based Bingo",
-      subtitle: "Bingo game with token wins",
+      subtitle: "Bingo game with token wins on Base",
       description: "A fun, free Bingo game native to Farcaster and Coinbase Wallet. Mark your card, draw numbers, and win mock BINGO - real payouts coming soon on Base!",
       primaryCategory: "games",
       screenshotUrls: [
@@ -17,7 +17,7 @@ export async function GET() {
     splashImageUrl: "https://basedbingo.xyz/splash.png",
       splashBackgroundColor: "#0052FF",
       tags: ["bingo", "games", "base", "crypto", "onchain"],
-      tagline: "Play Bingo win real BINGO now",
+      tagline: "Play Bingo. Win $BINGO on Base.",
       buttonTitle: "Play Based Bingo",
       ogTitle: "Based Bingo Onchain Fun",
       ogDescription: "Draw numbers, mark your card, and shout BINGO! Free play now, token wins coming.",

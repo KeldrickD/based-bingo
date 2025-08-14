@@ -86,6 +86,7 @@ export default function BingoCard() {
   const [drawnNumbers, setDrawnNumbers] = useState<Set<number>>(new Set());
   const [recentDraws, setRecentDraws] = useState<number[]>([]);
   const [winInfo, setWinInfo] = useState({ count: 0, types: [] as string[] });
+  const [awardedTypes, setAwardedTypes] = useState<Set<string>>(new Set());
   const [shareUrl, setShareUrl] = useState('');
   const [unlimitedToday, setUnlimitedToday] = useState(false);
   const [dailyPlays, setDailyPlays] = useState(0);
@@ -135,6 +136,7 @@ export default function BingoCard() {
     setDrawnNumbers(new Set());
     setRecentDraws([]);
     setWinInfo({ count: 0, types: [] });
+    setAwardedTypes(new Set());
     setGameTimer(120);
     setTimerActive(false);
     if (autoDrawInterval) {
@@ -357,8 +359,19 @@ export default function BingoCard() {
         console.error('Farcaster SDK error (non-critical):', error);
       }
 
-      // Ensure on-chain join before attempting award (gasless if paymaster enabled)
+      // Determine which types to award now (avoid duplicates in same game)
       (async () => {
+        const earnedNow: string[] = [];
+        if (newWin.count >= 1) earnedNow.push('LINE');
+        if (newWin.count >= 2) earnedNow.push('DOUBLE_LINE');
+        if (newWin.count === 12) earnedNow.push('FULL_HOUSE');
+        const toAward = earnedNow.filter((t) => !awardedTypes.has(t));
+        if (toAward.length === 0) {
+          console.log('🛑 No new types to award (already awarded in this game)');
+          return;
+        }
+
+        // Ensure on-chain join before attempting award (gasless if paymaster enabled)
         const joinedOk = await joinOnDemand();
         if (!joinedOk) {
           console.warn('⛔ Aborting award: join prerequisite not satisfied');
@@ -372,9 +385,8 @@ export default function BingoCard() {
         console.log('🌐 Current origin:', window.location.origin);
         console.log('🕐 Request timestamp:', new Date().toISOString());
 
-        // Send ONLY the latest win type to avoid duplicate-claim reverts
-        const latestType = newWin.types[newWin.types.length - 1];
-        const requestPayload = { address, winTypes: [latestType] };
+        // Send only new types not previously awarded in this game
+        const requestPayload = { address, winTypes: toAward };
         console.log('📦 Request payload:', JSON.stringify(requestPayload, null, 2));
 
         // Aggressive retry mechanism with longer delays and more attempts
@@ -431,23 +443,7 @@ export default function BingoCard() {
               attempt
             });
 
-            // Client-side fallback: some contracts require player msg.sender
-            try {
-              const latestTypeNorm = normalizeWinType(latestType);
-              console.log('🛠️ Client fallback: wallet awardWins', latestTypeNorm);
-              await writeContractAsync({
-                address: GAME_ADDRESS,
-                abi: bingoGameV3ABI as any,
-                functionName: 'awardWins',
-                args: [address, [latestTypeNorm]],
-                value: BigInt(0),
-              });
-              showToast(`🎉 ${rewardAmount} $BINGO awarded! (client)`, 'success');
-              setRewardStatus({ state: 'success', txHash: 'client', totalRewards: rewardAmount });
-              return true;
-            } catch (fallbackErr: any) {
-              console.error('❌ Client fallback failed:', fallbackErr?.message || fallbackErr);
-            }
+            // No client-side fallback; rely on server only to avoid wallet prompts
             const msg = json?.message || json?.details || text || 'Unknown server error';
             // Update UI-visible status for mobile envs
             setRewardStatus({
@@ -474,7 +470,9 @@ export default function BingoCard() {
               attempt
             });
             
-            showToast(`🎉 ${rewardAmount} $BINGO awarded! Tx: ${data.transactionHash?.slice(0, 10)}...`, 'success');
+            // Track awarded types to prevent duplicates
+            setAwardedTypes((prev) => new Set([...prev, ...toAward]));
+            showToast(`🎉 ${1000 * toAward.length} $BINGO awarded! Tx: ${data.transactionHash?.slice(0, 10)}...`, 'success');
             setRewardStatus({ state: 'success', txHash: data.transactionHash, totalRewards: data.totalRewards || rewardAmount });
             return true;
           } else {
