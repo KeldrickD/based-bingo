@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { createRemoteJWKSet, jwtVerify } from 'jose';
 
 function decodeJwtPayload(token: string): Record<string, any> | null {
   try {
@@ -28,17 +29,37 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const claims = decodeJwtPayload(token) || {};
+    // Attempt full verification against Farcaster JWKS
+    const jwksUrl = new URL('https://auth.farcaster.xyz/.well-known/jwks.json');
+    let verified = false;
+    let claims: any = null;
+    try {
+      const JWKS = createRemoteJWKSet(jwksUrl);
+      const expectedAud = (process.env.NEXT_PUBLIC_URL || 'https://basedbingo.xyz').replace(/\/$/, '');
+      const { payload } = await jwtVerify(token, JWKS, {
+        audience: expectedAud,
+        issuer: 'https://auth.farcaster.xyz',
+      });
+      claims = payload;
+      verified = true;
+    } catch {
+      // Fallback: decode without verification to aid debugging
+      claims = decodeJwtPayload(token) || {};
+    }
+
     const now = Math.floor(Date.now() / 1000);
     const isExpired = typeof claims.exp === 'number' && claims.exp < now;
     const expectedAud = process.env.NEXT_PUBLIC_URL || 'https://basedbingo.xyz';
     const audienceOk = !claims.aud || claims.aud === expectedAud;
+    const issuerOk = !claims.iss || String(claims.iss).startsWith('https://auth.farcaster.xyz');
 
     return NextResponse.json({
       success: true,
+      verified,
       tokenPresent: true,
       expired: isExpired,
       audienceOk,
+      issuerOk,
       claims: {
         sub: claims.sub,
         aud: claims.aud,

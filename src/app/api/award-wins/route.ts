@@ -124,6 +124,17 @@ export async function POST(request: NextRequest) {
       if (!idToken) {
         return NextResponse.json({ success: false, message: 'Unauthorized: missing miniapp auth token' }, { status: 401 });
       }
+      // Optional: soft-verify via local endpoint to reuse logic
+      try {
+        const verifyRes = await fetch(`${process.env.NEXT_PUBLIC_URL || 'https://basedbingo.xyz'}/api/miniapp/verify`, {
+          method: 'POST',
+          headers: { 'X-Action-Id-Token': idToken },
+        });
+        const verifyJson = await verifyRes.json();
+        if (!verifyRes.ok || !verifyJson?.success || verifyJson?.expired) {
+          return NextResponse.json({ success: false, message: 'Unauthorized: invalid or expired miniapp auth token' }, { status: 401 });
+        }
+      } catch {}
     }
     const { address, winTypes, gameId, dryRun } = requestBody as { address: string; winTypes: string[]; gameId?: number; dryRun?: boolean };
 

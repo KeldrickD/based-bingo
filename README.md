@@ -56,6 +56,8 @@ This app is fully compliant with **EIP-5792** (Wallet Connect for Mini Apps), en
     NEXT_PUBLIC_BASE_APP_ID=your-base-app-id
     NEXT_PUBLIC_CDP_RPC=https://api.developer.coinbase.com/rpc/v1/base/YOUR_API_KEY_HERE
     REQUIRE_MINIAPP_AUTH=0
+    # Public URL used as Mini App audience (must match deploy origin exactly)
+    NEXT_PUBLIC_URL=https://basedbingo.xyz
 
    # Farcaster Account Association (from your manifest)
    FARCASTER_HEADER=eyJmaWQiOjEwNDUwNDIsInR5cGUiOiJhdXRoIiwia2V5IjoiMHgyZTM3MkEyNzFkQjI3NWNlMDRDOTdkM2RlNWZBMUIzM0QzZUJFNmRFIn0
@@ -139,6 +141,7 @@ NEXT_PUBLIC_ONCHAINKIT_API_KEY=your-production-api-key
     NEXT_PUBLIC_BASE_APP_ID=your-base-app-id
     NEXT_PUBLIC_CDP_RPC=https://api.developer.coinbase.com/rpc/v1/base/YOUR_API_KEY_HERE
     REQUIRE_MINIAPP_AUTH=1
+    NEXT_PUBLIC_URL=https://basedbingo.xyz
 FARCASTER_HEADER=your-farcaster-header
 FARCASTER_PAYLOAD=your-farcaster-payload
 FARCASTER_SIGNATURE=your-farcaster-signature
