@@ -328,6 +328,16 @@ export default function BingoCard() {
       const rewardAmount = 1000 * newWin.types.length;
       showToast(`🎉 ${newWin.types.join(' + ')} achieved! Sending ${rewardAmount} $BINGO...`, 'info');
 
+      // Subtle haptics on win (if supported in Mini App environment)
+      try {
+        const anySdk = sdk as any;
+        if (anySdk?.haptics?.notification) {
+          anySdk.haptics.notification('success');
+        } else if (anySdk?.haptics?.impact) {
+          anySdk.haptics.impact('medium');
+        }
+      } catch {}
+
       // Generate win image (skip on mobile if causing issues)
       if (gridRef.current && !(/Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent))) {
         toPng(gridRef.current).then((dataUrl) => {
@@ -473,6 +483,14 @@ export default function BingoCard() {
             // Track awarded types to prevent duplicates
             setAwardedTypes((prev) => new Set([...prev, ...toAward]));
             showToast(`🎉 ${1000 * toAward.length} $BINGO awarded! Tx: ${data.transactionHash?.slice(0, 10)}...`, 'success');
+             try {
+               const anySdk = sdk as any;
+               if (anySdk?.haptics?.notification) {
+                 anySdk.haptics.notification('success');
+               } else if (anySdk?.haptics?.impact) {
+                 anySdk.haptics.impact('heavy');
+               }
+             } catch {}
             setRewardStatus({ state: 'success', txHash: data.transactionHash, totalRewards: data.totalRewards || rewardAmount });
             return true;
           } else {
