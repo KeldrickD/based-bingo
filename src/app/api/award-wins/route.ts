@@ -156,7 +156,7 @@ export async function POST(request: NextRequest) {
 
     // Diagnostics: oracle authorization
     let isOracle = false;
-    try { isOracle = await contract.isAuthorizedOracle(signer.address); } catch {}
+    try { isOracle = await contract.isAuthorizedOracle?.(signer.address); } catch {}
 
     // Normalize to 3 encodings
     const normalizedStrings = normalizeWinTypesToStrings(winTypes);

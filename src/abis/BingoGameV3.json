@@ -22,5 +22,24 @@
     "outputs": [],
     "stateMutability": "nonpayable", 
     "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "claimStreakBonus",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {"internalType": "address", "name": "player", "type": "address"},
+      {"internalType": "bytes32", "name": "challengeId", "type": "bytes32"},
+      {"internalType": "uint256", "name": "weekKey", "type": "uint256"},
+      {"internalType": "uint256", "name": "amount", "type": "uint256"}
+    ],
+    "name": "awardWeeklyChallenge",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
   }
 ] 

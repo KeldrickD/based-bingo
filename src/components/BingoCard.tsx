@@ -571,7 +571,19 @@ export default function BingoCard() {
              // Streak bonus at 7 days
              try {
                if (streakCount >= 7) {
-                 showToast('🔥 7-day streak bonus: +50 $BINGO!', 'success');
+                 // Attempt onchain streak bonus claim (if contract supports it)
+                 try {
+                   await writeContractAsync({
+                     address: GAME_ADDRESS,
+                     abi: bingoGameV3ABI as any,
+                     functionName: 'claimStreakBonus',
+                     args: [],
+                     value: BigInt(0),
+                   });
+                   showToast('🔥 7-day streak bonus claimed onchain!', 'success');
+                 } catch {
+                   showToast('🔥 7-day streak! Bonus claim available soon.', 'info');
+                 }
                }
              } catch {}
             setRewardStatus({ state: 'success', txHash: data.transactionHash, totalRewards: data.totalRewards || rewardAmount });
