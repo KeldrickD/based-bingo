@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 
-export async function GET() {
-  const manifest = {
+export function buildFarcasterManifest() {
+  return {
     miniapp: {
       version: "1",
       name: "Based Bingo",
@@ -9,12 +9,12 @@ export async function GET() {
       description: "A fun, free Bingo game native to Farcaster and Coinbase Wallet. Mark your card, draw numbers, and win mock BINGO - real payouts coming soon on Base!",
       primaryCategory: "games",
       screenshotUrls: [
-              "https://basedbingo.xyz/screenshot1.png",
-      "https://basedbingo.xyz/screenshot2.png"
+        "https://basedbingo.xyz/screenshot1.png",
+        "https://basedbingo.xyz/screenshot2.png"
       ],
-          imageUrl: "https://basedbingo.xyz/preview.png",
-    heroImageUrl: "https://basedbingo.xyz/hero.png",
-    splashImageUrl: "https://basedbingo.xyz/splash.png",
+      imageUrl: "https://basedbingo.xyz/preview.png",
+      heroImageUrl: "https://basedbingo.xyz/hero.png",
+      splashImageUrl: "https://basedbingo.xyz/splash.png",
       splashBackgroundColor: "#0052FF",
       tags: ["bingo", "games", "base", "crypto", "onchain"],
       tagline: "Play Bingo. Win $BINGO on Base.",
@@ -32,7 +32,6 @@ export async function GET() {
       header: "eyJmaWQiOjEwNDUwNDIsInR5cGUiOiJhdXRoIiwia2V5IjoiMHgyZTM3MkEyNzFkQjI3NWNlMDRDOTdkM2RlNWZBMUIzM0QzZUJFNmRFIn0",
       payload: "eyJkb21haW4iOiJiYXNlZGJpbmdvLnh5eiJ9",
       signature: "r+PRsIWuo4wnxoxWcnlfVzEY9OkD9KGGk7Mj+Nm7BDoN2UjsYUnPEnETdld5M2SS5bbAhPF7028NsK3o4iHtyBw="
-    
     },
     frame: {
       version: "next",
@@ -47,7 +46,9 @@ export async function GET() {
         "0x9AA1789957D7b2A256d44C30c015cB3b1f91Ad18"
       ]
     }
-  };
-  
-  return NextResponse.json(manifest);
+  } as const;
+}
+
+export async function GET() {
+  return NextResponse.json(buildFarcasterManifest());
 } 

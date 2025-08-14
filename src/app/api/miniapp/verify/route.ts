@@ -31,11 +31,14 @@ export async function POST(request: NextRequest) {
     const claims = decodeJwtPayload(token) || {};
     const now = Math.floor(Date.now() / 1000);
     const isExpired = typeof claims.exp === 'number' && claims.exp < now;
+    const expectedAud = process.env.NEXT_PUBLIC_URL || 'https://basedbingo.xyz';
+    const audienceOk = !claims.aud || claims.aud === expectedAud;
 
     return NextResponse.json({
       success: true,
       tokenPresent: true,
       expired: isExpired,
+      audienceOk,
       claims: {
         sub: claims.sub,
         aud: claims.aud,
