@@ -196,7 +196,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
         }
       });
 
-    const response = {
+    const response: any = {
       metrics,
       aggregated: gameAnalytics,
       system: {
@@ -205,6 +205,16 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
         timestamp: new Date().toISOString(),
       },
     };
+
+    // Optionally include current weekly challenge info
+    try {
+      const includeChallenge = searchParams.get('challenge') === '1';
+      if (includeChallenge) {
+        const { getCurrentChallenge, getWeekKey } = await import('@/lib/challenges');
+        response.currentChallenge = getCurrentChallenge();
+        response.weekKey = getWeekKey();
+      }
+    } catch {}
 
     // Include detailed events if requested
     if (detailed) {

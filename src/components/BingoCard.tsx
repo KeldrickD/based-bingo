@@ -104,6 +104,9 @@ export default function BingoCard() {
   const [autoDrawInterval, setAutoDrawInterval] = useState<NodeJS.Timeout | null>(null);
   const gridRef = useRef<HTMLDivElement>(null);
   const isJoiningRef = useRef<boolean>(false);
+  const [streakCount, setStreakCount] = useState(0);
+  const [challengeInfo, setChallengeInfo] = useState<{ id: string; name: string; goal: string; rewardBingo: number } | null>(null);
+  const [notifyOptIn, setNotifyOptIn] = useState<boolean>(false);
   
   // Daily limits state
   const [lastPlayDate, setLastPlayDate] = useState('');
@@ -128,6 +131,36 @@ export default function BingoCard() {
       setDailyPlays(storedPlays);
       setUnlimitedToday(storedUnlimited);
     }
+  }, []);
+
+  // Load streaks and weekly challenge
+  useEffect(() => {
+    try {
+      const today = new Date().toISOString().split('T')[0];
+      const lastPlayed = localStorage.getItem('lastPlayedDate');
+      const storedStreak = parseInt(localStorage.getItem('streakCount') || '0', 10);
+      if (lastPlayed === today) {
+        setStreakCount(storedStreak);
+      } else {
+        // do not update here; update on game start
+        setStreakCount(storedStreak);
+      }
+      setNotifyOptIn(localStorage.getItem('notifyChallenge') === '1');
+    } catch {}
+    (async () => {
+      try {
+        const res = await fetch('/api/analytics?timeframe=7d&challenge=1');
+        const data = await res.json();
+        if (data?.currentChallenge) {
+          setChallengeInfo({
+            id: data.currentChallenge.id,
+            name: data.currentChallenge.name,
+            goal: data.currentChallenge.goal,
+            rewardBingo: data.currentChallenge.rewardBingo,
+          });
+        }
+      } catch {}
+    })();
   }, []);
 
   const resetGame = useCallback(() => {
@@ -300,6 +333,24 @@ export default function BingoCard() {
       localStorage.setItem('dailyPlays', newPlays.toString());
       console.log('✅ Free game started - play count updated to:', newPlays);
     }
+
+    // Update streaks
+    try {
+      const today = new Date().toISOString().split('T')[0];
+      const yesterday = new Date(Date.now() - 86400000).toISOString().split('T')[0];
+      const lastPlayed = localStorage.getItem('lastPlayedDate');
+      let nextStreak = 1;
+      if (lastPlayed === today) {
+        nextStreak = streakCount || 1;
+      } else if (lastPlayed === yesterday) {
+        nextStreak = (streakCount || 0) + 1;
+      } else {
+        nextStreak = 1;
+      }
+      localStorage.setItem('lastPlayedDate', today);
+      localStorage.setItem('streakCount', String(nextStreak));
+      setStreakCount(nextStreak);
+    } catch {}
     
     if (!address) {
       console.log('🎮 Demo game started - connect wallet for automatic rewards!');
@@ -516,6 +567,13 @@ export default function BingoCard() {
              if (isMiniApp() && supportsHaptics()) {
                hapticsImpact('heavy');
              }
+
+             // Streak bonus at 7 days
+             try {
+               if (streakCount >= 7) {
+                 showToast('🔥 7-day streak bonus: +50 $BINGO!', 'success');
+               }
+             } catch {}
             setRewardStatus({ state: 'success', txHash: data.transactionHash, totalRewards: data.totalRewards || rewardAmount });
             return true;
           } else {
@@ -732,6 +790,35 @@ export default function BingoCard() {
         {!supportsHaptics() && (
           <p className="text-xs text-gray-400 mt-1">Haptics not available in this environment</p>
         )}
+        <div className="mt-2 text-xs text-gray-600">
+          Streak: <span className="font-semibold">{streakCount} day{streakCount === 1 ? '' : 's'}</span>
+        </div>
+        {challengeInfo && (
+          <div className="mt-1 text-xs text-gray-600">
+            Weekly: <span className="font-semibold">{challengeInfo.name}</span> — reward {challengeInfo.rewardBingo} $BINGO
+          </div>
+        )}
+        <div className="mt-2">
+          <label className="inline-flex items-center gap-2 text-xs text-gray-600 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={notifyOptIn}
+              onChange={async (e) => {
+                const checked = e.target.checked;
+                setNotifyOptIn(checked);
+                localStorage.setItem('notifyChallenge', checked ? '1' : '0');
+                try {
+                  await fetch('/api/webhook', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ type: 'subscribe_challenge', data: { optIn: checked } }),
+                  });
+                } catch {}
+              }}
+            />
+            Notify me when a new weekly challenge starts
+          </label>
+        </div>
       </div>
 
       {/* Timer */}

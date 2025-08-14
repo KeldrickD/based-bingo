@@ -15,6 +15,10 @@ export async function POST(request: Request) {
         console.log('User action:', body.data);
         // Handle user actions (e.g., game completion, wallet connection)
         break;
+      case 'subscribe_challenge':
+        // Persist notification opt-ins (simple cookie-based ack for now)
+        console.log('Challenge subscription request:', body.data);
+        break;
       default:
         console.log('Unknown webhook type:', body.type);
     }
