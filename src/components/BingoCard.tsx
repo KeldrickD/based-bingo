@@ -191,6 +191,28 @@ export default function BingoCard() {
     }
   }, [timerActive, gameTimer, stopAutoDraw]);
 
+  // Pause/cleanup on back/navigation
+  useEffect(() => {
+    const onPopState = () => {
+      stopAutoDraw();
+      setTimerActive(false);
+    };
+    window.addEventListener('popstate', onPopState);
+    try {
+      const anySdk = sdk as any;
+      if (anySdk?.navigation?.registerBackHandler) {
+        anySdk.navigation.registerBackHandler(() => {
+          stopAutoDraw();
+          setTimerActive(false);
+          return false; // let container handle the actual back
+        });
+      }
+    } catch {}
+    return () => {
+      window.removeEventListener('popstate', onPopState);
+    };
+  }, [stopAutoDraw]);
+
   // (moved below joinOnDemand declaration)
 
   const joinOnDemand = useCallback(async (): Promise<boolean> => {
@@ -409,6 +431,17 @@ export default function BingoCard() {
           const controller = new AbortController();
           const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 second timeout
 
+          // Preflight verify to ensure container injects auth header
+          try {
+            await fetch('/api/miniapp/verify', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              credentials: 'include',
+              keepalive: true,
+              body: JSON.stringify({ ping: true }),
+            });
+          } catch {}
+
           const response = await fetch('/api/award-wins', {
             method: 'POST',
             headers: { 
@@ -416,6 +449,7 @@ export default function BingoCard() {
               'Cache-Control': 'no-cache',
               'X-Attempt': attempt.toString()
             },
+            credentials: 'include',
             body: JSON.stringify(requestPayload),
             signal: controller.signal
           });
@@ -695,6 +729,9 @@ export default function BingoCard() {
             'Connect wallet for rewards!'
           )}
         </p>
+        {!supportsHaptics() && (
+          <p className="text-xs text-gray-400 mt-1">Haptics not available in this environment</p>
+        )}
       </div>
 
       {/* Timer */}
