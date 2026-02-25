@@ -2,6 +2,12 @@ import { createConfig, http, cookieStorage, createStorage } from 'wagmi';
 import { base } from 'wagmi/chains';
 import { farcasterMiniApp as miniAppConnector } from '@farcaster/miniapp-wagmi-connector';
 import { coinbaseWallet, injected } from 'wagmi/connectors';
+import { Attribution } from 'ox/erc8021';
+
+// Base Builder Code for onchain attribution (base.dev → Settings → Builder Code)
+const DATA_SUFFIX = Attribution.toDataSuffix({
+  codes: ['bc_162gf8gz'],
+});
 
 // Enhanced RPC configuration with fallback and monitoring
 const CDP_RPC = process.env.NEXT_PUBLIC_CDP_RPC;
@@ -67,6 +73,7 @@ const connectorsList = [
 export const config = createConfig({
   chains: [base],
   connectors: connectorsList as any,
+  dataSuffix: DATA_SUFFIX,
   
   // Enhanced storage for session persistence
   storage: createStorage({
@@ -89,7 +96,7 @@ export const config = createConfig({
   batch: {
     multicall: true,
   },
-});
+} as Parameters<typeof createConfig>[0]);
 
 // Export configuration details for monitoring
 export const wagmiInfo = {
