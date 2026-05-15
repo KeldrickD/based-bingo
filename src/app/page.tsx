@@ -2,6 +2,7 @@ import { Metadata } from 'next';
 import Link from 'next/link';
 import { MiniKitProvider } from '@/providers/MiniKitProvider';
 import BingoCard from '@/components/BingoCard';
+import WalletConnectionPanel from '@/components/WalletConnectionPanel';
 import { getCurrentChallenge, getWeekKey } from '@/lib/challenges';
 
 export const revalidate = 3600;
@@ -64,6 +65,7 @@ export default function Home() {
               <BingoCard />
             </section>
             <aside className="order-1 space-y-4 lg:order-2">
+              <WalletConnectionPanel />
               <ChallengePanel />
               <div className="rounded-lg border border-slate-200 bg-white/85 p-4 text-sm text-slate-600 shadow-sm">
                 <div className="font-semibold text-slate-950">How it pays</div>

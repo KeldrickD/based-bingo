@@ -12,6 +12,25 @@ import { wagmiInfo } from '@/lib/wagmi-config';
 const GAME_DURATION_SECONDS = 120;
 const DRAW_INTERVAL_MS = 3000;
 const MAX_FREE_PLAYS = 3;
+const XP_PER_GAME = 25;
+const XP_PER_WIN = 150;
+
+type RewardRunway = {
+  healthy: boolean;
+  rewardPerWinFormatted: string;
+  contractBalanceFormatted: string;
+  runwayWins: number;
+  isAuthorizedOracle: boolean;
+  signerConfigured: boolean;
+};
+
+type PlayerStats = {
+  xp: number;
+  level: number;
+  totalGames: number;
+  totalWins: number;
+  tickets: number;
+};
 
 const formatTimer = (seconds: number) => {
   const minutes = Math.floor(seconds / 60);
@@ -23,6 +42,8 @@ const numberColumn = (num: number | null) => {
   if (!num) return '--';
   return ['B', 'I', 'N', 'G', 'O'][Math.floor((num - 1) / 15)] || '--';
 };
+
+const levelFromXp = (xp: number) => Math.max(1, Math.floor(Math.sqrt(xp / 100)) + 1);
 
 // Toast notification component
 const Toast = ({ message, type, onClose }: { message: string; type: 'success' | 'error' | 'info'; onClose: () => void }) => {
@@ -117,10 +138,17 @@ export default function BingoCard() {
   const [timerActive, setTimerActive] = useState(false);
   const [autoDrawInterval, setAutoDrawInterval] = useState<ReturnType<typeof setInterval> | null>(null);
   const gridRef = useRef<HTMLDivElement>(null);
-  const isJoiningRef = useRef<boolean>(false);
   const [streakCount, setStreakCount] = useState(0);
   const [challengeInfo, setChallengeInfo] = useState<{ id: string; name: string; goal: string; rewardBingo: number } | null>(null);
   const [notifyOptIn, setNotifyOptIn] = useState<boolean>(false);
+  const [rewardRunway, setRewardRunway] = useState<RewardRunway | null>(null);
+  const [playerStats, setPlayerStats] = useState<PlayerStats>({
+    xp: 0,
+    level: 1,
+    totalGames: 0,
+    totalWins: 0,
+    tickets: 0,
+  });
 
   const playsRemaining = useMemo(
     () => unlimitedToday ? 'Unlimited' : Math.max(0, MAX_FREE_PLAYS - dailyPlays).toString(),
@@ -134,6 +162,12 @@ export default function BingoCard() {
     if (drawnNumbers.size > 0) return 'Paused';
     return 'Ready';
   }, [drawnNumbers.size, timerActive, winInfo.types.length]);
+  const rewardPerWin = rewardRunway?.rewardPerWinFormatted || '1000.0';
+  const levelProgress = useMemo(() => {
+    const currentLevelFloor = Math.pow(playerStats.level - 1, 2) * 100;
+    const nextLevelFloor = Math.pow(playerStats.level, 2) * 100;
+    return Math.min(100, Math.round(((playerStats.xp - currentLevelFloor) / (nextLevelFloor - currentLevelFloor)) * 100));
+  }, [playerStats.level, playerStats.xp]);
 
   const showToast = useCallback((message: string, type: 'success' | 'error' | 'info') => {
     setToast({ message, type });
@@ -142,6 +176,22 @@ export default function BingoCard() {
   const closeToast = useCallback(() => {
     setToast(null);
   }, []);
+
+  const updatePlayerStats = useCallback((delta: Partial<Omit<PlayerStats, 'level'>>) => {
+    setPlayerStats((prev) => {
+      const nextXp = Math.max(0, prev.xp + (delta.xp || 0));
+      const next = {
+        xp: nextXp,
+        level: levelFromXp(nextXp),
+        totalGames: Math.max(0, prev.totalGames + (delta.totalGames || 0)),
+        totalWins: Math.max(0, prev.totalWins + (delta.totalWins || 0)),
+        tickets: Math.max(0, prev.tickets + (delta.tickets || 0)),
+      };
+      localStorage.setItem('playerStats', JSON.stringify(next));
+      return next;
+    });
+  }, []);
+
   // Initialize daily limits
   useEffect(() => {
     const today = new Date().toISOString().split('T')[0];
@@ -167,18 +217,30 @@ export default function BingoCard() {
       const today = new Date().toISOString().split('T')[0];
       const lastPlayed = localStorage.getItem('lastPlayedDate');
       const storedStreak = parseInt(localStorage.getItem('streakCount') || '0', 10);
+      const storedStats = JSON.parse(localStorage.getItem('playerStats') || '{}');
       if (lastPlayed === today) {
         setStreakCount(storedStreak);
       } else {
         // do not update here; update on game start
         setStreakCount(storedStreak);
       }
+      const xp = Number(storedStats.xp || 0);
+      setPlayerStats({
+        xp,
+        level: levelFromXp(xp),
+        totalGames: Number(storedStats.totalGames || 0),
+        totalWins: Number(storedStats.totalWins || 0),
+        tickets: Number(storedStats.tickets || 0),
+      });
       setNotifyOptIn(localStorage.getItem('notifyChallenge') === '1');
     } catch {}
     (async () => {
       try {
-        const res = await fetch('/api/analytics?timeframe=7d&challenge=1');
-        const data = await res.json();
+        const [challengeRes, rewardRes] = await Promise.all([
+          fetch('/api/analytics?timeframe=7d&challenge=1'),
+          fetch('/api/rewards/status'),
+        ]);
+        const data = await challengeRes.json();
         if (data?.currentChallenge) {
           setChallengeInfo({
             id: data.currentChallenge.id,
@@ -186,6 +248,10 @@ export default function BingoCard() {
             goal: data.currentChallenge.goal,
             rewardBingo: data.currentChallenge.rewardBingo,
           });
+        }
+        if (rewardRes.ok) {
+          const rewards = await rewardRes.json();
+          if (rewards?.success) setRewardRunway(rewards);
         }
       } catch {}
     })();
@@ -274,60 +340,6 @@ export default function BingoCard() {
     };
   }, [stopAutoDraw]);
 
-  // (moved below joinOnDemand declaration)
-
-  const joinOnDemand = useCallback(async (): Promise<boolean> => {
-    if (!address) return false;
-    try {
-      const today = new Date().toISOString().split('T')[0];
-      const cacheKey = `joined:${address}:${today}`;
-      if (localStorage.getItem(cacheKey) === '1') {
-        return true;
-      }
-
-      if (isJoiningRef.current) return true;
-      isJoiningRef.current = true;
-
-      console.log('🧩 Ensuring on-chain join before awarding...', { address, paymaster: wagmiInfo.isPaymasterEnabled });
-      try {
-        await writeContractAsync({
-          address: GAME_ADDRESS,
-          abi: bingoGameV3ABI as any,
-          functionName: 'join',
-          args: [],
-          value: BigInt(0),
-        });
-      } catch {
-        // If join prompts for token transfer/fee or is blocked, skip and let 2-arg awardWins handle session
-        console.warn('join() skipped due to wallet error; proceeding without explicit join');
-      }
-      localStorage.setItem(cacheKey, '1');
-      console.log('✅ Joined recorded for today');
-      return true;
-    } catch (err: any) {
-      const msg = err?.message || String(err);
-      console.warn('⚠️ join() failed:', msg);
-      if (!wagmiInfo.isPaymasterEnabled && /insufficient|funds|fee|gas/i.test(msg)) {
-        showToast('Join required to receive rewards. Please confirm the wallet request (gasless if enabled) or keep a small amount of Base ETH.', 'error');
-      } else {
-        showToast('Join failed. Please check your wallet and confirm the request.', 'error');
-      }
-      return false;
-    } finally {
-      isJoiningRef.current = false;
-    }
-  }, [address, showToast, writeContractAsync]);
-
-  // Auto-join once when wallet connects (gasless if configured)
-  useEffect(() => {
-    if (!address) return;
-    const today = new Date().toISOString().split('T')[0];
-    const cacheKey = `joined:${address}:${today}`;
-    if (localStorage.getItem(cacheKey) === '1') return;
-    // Fire and forget; joinOnDemand already handles toasts and caching
-    joinOnDemand();
-  }, [address, joinOnDemand]);
-
   const startGame = useCallback(async () => {
     if (!unlimitedToday && dailyPlays >= MAX_FREE_PLAYS) {
       showToast('Daily free plays are used. Share for another play or unlock unlimited for today.', 'info');
@@ -335,7 +347,7 @@ export default function BingoCard() {
     }
 
     // Generate a new gameId for this session (timestamp-based)
-    const newGameId = Math.floor(Date.now() / 1000);
+    const newGameId = Date.now();
     setGameId(newGameId);
 
     // Removed on-chain join() to prevent transaction prompts on New Game
@@ -345,6 +357,7 @@ export default function BingoCard() {
     resetGame();
     setTimerActive(true);
     startAutoDraw();
+    updatePlayerStats({ xp: XP_PER_GAME, totalGames: 1 });
 
     // Update plays count - no contract interaction needed for free games
     if (!unlimitedToday) {
@@ -377,7 +390,7 @@ export default function BingoCard() {
     } else {
       console.log('🎮 Game started with wallet connected - ready for automatic rewards!');
     }
-  }, [unlimitedToday, dailyPlays, resetGame, startAutoDraw, address, showToast, streakCount]);
+  }, [unlimitedToday, dailyPlays, resetGame, startAutoDraw, updatePlayerStats, address, showToast, streakCount]);
 
   const pauseGame = useCallback(() => {
     stopAutoDraw();
@@ -432,7 +445,7 @@ export default function BingoCard() {
       setWinInfo(newWin);
       
       // Show immediate win notification with toast
-      const rewardAmount = 1000 * newWin.types.length;
+      const rewardAmount = Number.parseFloat(rewardPerWin) * newWin.types.length;
       showToast(`🎉 ${newWin.types.join(' + ')} achieved! Sending ${rewardAmount} $BINGO...`, 'info');
 
       // Subtle haptics on win (if supported in Mini App environment)
@@ -483,13 +496,6 @@ export default function BingoCard() {
           return;
         }
 
-        // Ensure on-chain join before attempting award (gasless if paymaster enabled)
-        const joinedOk = await joinOnDemand();
-        if (!joinedOk) {
-          console.warn('⛔ Aborting award: join prerequisite not satisfied');
-          return;
-        }
-
         // CRITICAL: Force automatic rewards with aggressive retry mechanism
         console.log('🚀 FORCING automatic reward transaction...');
         console.log('📡 Calling /api/award-wins with:', { address, winTypes: newWin.types });
@@ -498,7 +504,7 @@ export default function BingoCard() {
         console.log('🕐 Request timestamp:', new Date().toISOString());
 
         // Send only new types not previously awarded in this game
-        const requestPayload = { address, winTypes: toAward };
+        const requestPayload = { address, winTypes: toAward, gameId };
         console.log('📦 Request payload:', JSON.stringify(requestPayload, null, 2));
 
         // Aggressive retry mechanism with longer delays and more attempts
@@ -596,7 +602,8 @@ export default function BingoCard() {
             
             // Track awarded types to prevent duplicates
             setAwardedTypes((prev) => new Set([...prev, ...toAward]));
-            showToast(`🎉 ${1000 * toAward.length} $BINGO awarded! Tx: ${data.transactionHash?.slice(0, 10)}...`, 'success');
+            updatePlayerStats({ xp: XP_PER_WIN * toAward.length, totalWins: toAward.length, tickets: toAward.length });
+            showToast(`🎉 ${data.totalRewards || rewardAmount} $BINGO awarded! Tx: ${data.transactionHash?.slice(0, 10)}...`, 'success');
              if (isMiniApp() && supportsHaptics()) {
                hapticsImpact('heavy');
              }
@@ -799,23 +806,49 @@ export default function BingoCard() {
         </div>
       </div>
 
-      <div className="grid grid-cols-3 gap-2 text-center text-sm">
+      <div className="grid grid-cols-2 gap-2 text-center text-sm sm:grid-cols-4">
         <div className="rounded-md bg-slate-50 p-3">
           <div className="font-mono text-xl font-bold text-slate-950">{playsRemaining}</div>
           <div className="text-xs text-slate-500">plays left</div>
         </div>
         <div className="rounded-md bg-slate-50 p-3">
-          <div className="font-mono text-xl font-bold text-slate-950">{drawnNumbers.size}/75</div>
-          <div className="text-xs text-slate-500">drawn</div>
+          <div className="font-mono text-xl font-bold text-slate-950">{playerStats.level}</div>
+          <div className="text-xs text-slate-500">level</div>
         </div>
         <div className="rounded-md bg-slate-50 p-3">
           <div className="font-mono text-xl font-bold text-slate-950">{streakCount}</div>
           <div className="text-xs text-slate-500">day streak</div>
         </div>
+        <div className="rounded-md bg-slate-50 p-3">
+          <div className="font-mono text-xl font-bold text-slate-950">{playerStats.tickets}</div>
+          <div className="text-xs text-slate-500">prize tickets</div>
+        </div>
       </div>
 
-      <div className="h-2 overflow-hidden rounded-full bg-slate-100" aria-label={`${drawProgress}% of numbers drawn`}>
-        <div className="h-full rounded-full bg-coinbase-blue transition-all" style={{ width: `${drawProgress}%` }} />
+      <div className="space-y-2">
+        <div className="flex justify-between text-xs font-semibold text-slate-500">
+          <span>Draw progress: {drawnNumbers.size}/75</span>
+          <span>Level progress: {levelProgress}%</span>
+        </div>
+        <div className="h-2 overflow-hidden rounded-full bg-slate-100" aria-label={`${drawProgress}% of numbers drawn`}>
+          <div className="h-full rounded-full bg-coinbase-blue transition-all" style={{ width: `${drawProgress}%` }} />
+        </div>
+        <div className="h-2 overflow-hidden rounded-full bg-slate-100" aria-label={`${levelProgress}% to next level`}>
+          <div className="h-full rounded-full bg-emerald-500 transition-all" style={{ width: `${levelProgress}%` }} />
+        </div>
+      </div>
+
+      <div className="grid gap-2 text-sm sm:grid-cols-2">
+        <div className="rounded-md border border-emerald-200 bg-emerald-50 p-3 text-emerald-800">
+          <div className="font-bold">Reward runway</div>
+          <div className="mt-1 text-xs">
+            {rewardRunway ? `${rewardRunway.runwayWins} wins funded at ${rewardPerWin} $BINGO each` : 'Checking rewards...'}
+          </div>
+        </div>
+        <div className="rounded-md border border-blue-200 bg-blue-50 p-3 text-blue-800">
+          <div className="font-bold">Today&apos;s loop</div>
+          <div className="mt-1 text-xs">Play, mark fast, win tickets, come back tomorrow to protect your streak.</div>
+        </div>
       </div>
 
       <div className="flex items-center justify-between gap-3 rounded-md border border-slate-200 p-3">
@@ -1018,7 +1051,7 @@ export default function BingoCard() {
             🎉 {winInfo.types.join(' + ')} ({winInfo.count} total) ✨ Rewards Sent!
           </p>
           <p className="mt-1 text-sm">
-            {1000 * winInfo.types.length} $BINGO tokens awarded automatically!
+            {Number.parseFloat(rewardPerWin) * winInfo.types.length} $BINGO tokens awarded automatically!
           </p>
         </div>
       )}

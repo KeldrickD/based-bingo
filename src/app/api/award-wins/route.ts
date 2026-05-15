@@ -57,8 +57,8 @@ const bingoGameV3ABI = [
   { inputs: [{ internalType: 'address', name: 'oracle', type: 'address' }], name: 'isAuthorizedOracle', outputs: [{ internalType: 'bool', name: '', type: 'bool' }], stateMutability: 'view', type: 'function' },
 ];
 
-const GAME_ADDRESS = (process.env.GAME_ADDRESS as string) || '0x28BE1BD4267EEE7551eC256A6b1a034D559faeC0';
-const BASE_RPC_URL = 'https://mainnet.base.org';
+const GAME_ADDRESS = (process.env.GAME_ADDRESS || process.env.NEXT_PUBLIC_GAME_ADDRESS || '0x28BE1BD4267EEE7551eC256A6b1a034D559faeC0') as string;
+const BASE_RPC_URL = process.env.CDP_RPC || process.env.NEXT_PUBLIC_CDP_RPC || 'https://mainnet.base.org';
 
 function normalizeWinTypesToStrings(winTypes: string[]): string[] {
   return (winTypes || []).map((t) => {
@@ -208,7 +208,13 @@ export async function POST(request: NextRequest) {
     const receipt = await tx.wait();
 
     const processingTime = Date.now() - startTime;
-    const totalRewards = 1000 * normalizedStrings.length;
+    let rewardPerWin = BigInt(1000);
+    try {
+      const config = await contract.getConfig?.();
+      const rawReward = config?._rewardPerWin ?? config?.[1];
+      if (rawReward) rewardPerWin = BigInt(rawReward) / BigInt(10) ** BigInt(18);
+    } catch {}
+    const totalRewards = Number(rewardPerWin) * normalizedStrings.length;
 
     return NextResponse.json({ success: true, message: `Rewards sent: ${normalizedStrings.join(' + ')}`, transactionHash: receipt.hash, blockNumber: receipt.blockNumber, playerAddress: address, totalRewards, processingTimeMs: processingTime, selectedVariant: selected.label, selectedSignature: selected.sig, isAuthorizedOracle: isOracle, signer: signer.address });
   } catch (error: any) {

@@ -1,7 +1,7 @@
 import { createConfig, http, cookieStorage, createStorage } from 'wagmi';
 import { base } from 'wagmi/chains';
 import { farcasterMiniApp as miniAppConnector } from '@farcaster/miniapp-wagmi-connector';
-import { coinbaseWallet, injected } from 'wagmi/connectors';
+import { baseAccount, coinbaseWallet, injected } from 'wagmi/connectors';
 import { Attribution } from 'ox/erc8021';
 
 // Base Builder Code for onchain attribution (base.dev → Settings → Builder Code)
@@ -36,21 +36,23 @@ const getRpcUrl = () => {
 const rpcUrl = getRpcUrl();
 const appUrl = getAppUrl();
 
-// Build connectors (exclude WalletConnect to satisfy Farcaster CSP)
+// Build connectors for Base App first, then Farcaster/browser fallbacks.
 const connectorsList = [
-  // Primary: Farcaster Mini App connector (EIP-5792 compliant)
-  miniAppConnector(),
+  injected(),
 
-  // Enhanced: Coinbase Wallet with ERC-4337 support
-  coinbaseWallet({
-    appName: 'Based Bingo V2',
-    appLogoUrl: `${appUrl}/icon.png`,
-    chainId: base.id,
-    preference: 'smartWalletOnly', // Enable smart wallet features
+  baseAccount({
+    appName: 'Based Bingo',
   }),
 
-  // Additional connectors for broader compatibility
-  injected({ target: 'metaMask' }),
+  coinbaseWallet({
+    appName: 'Based Bingo',
+    appLogoUrl: `${appUrl}/icon.png`,
+    chainId: base.id,
+    preference: 'smartWalletOnly',
+  }),
+
+  // Keep Farcaster compatibility for users opening from Farcaster clients.
+  miniAppConnector(),
 ];
 
 // Enhanced wagmi configuration with paymaster support
@@ -88,10 +90,10 @@ export const wagmiInfo = {
   appUrl,
   isPaymasterEnabled: !!CDP_RPC,
   supportedConnectors: [
-    'Farcaster Mini App',
+    'Injected wallet',
+    'Base Account',
     'Coinbase Wallet (Smart Wallet)',
-    'MetaMask',
-    ...(process.env.NEXT_PUBLIC_WC_PROJECT_ID ? ['WalletConnect'] : []),
+    'Farcaster Mini App',
   ],
   features: {
     gaslessTransactions: !!CDP_RPC,
