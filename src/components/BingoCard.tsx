@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useAccount, useWriteContract } from 'wagmi';
 import { toPng } from 'html-to-image';
 import { sdk } from '@farcaster/frame-sdk';
@@ -8,6 +8,21 @@ import { isMiniApp, supportsHaptics, hapticsNotify, hapticsImpact } from '@/lib/
 import basedBingoABI from '@/abis/BasedBingo.json';
 import bingoGameV3ABI from '@/abis/BingoGameV3.json';
 import { wagmiInfo } from '@/lib/wagmi-config';
+
+const GAME_DURATION_SECONDS = 120;
+const DRAW_INTERVAL_MS = 3000;
+const MAX_FREE_PLAYS = 3;
+
+const formatTimer = (seconds: number) => {
+  const minutes = Math.floor(seconds / 60);
+  const remainingSeconds = seconds % 60;
+  return `${minutes}:${remainingSeconds < 10 ? '0' : ''}${remainingSeconds}`;
+};
+
+const numberColumn = (num: number | null) => {
+  if (!num) return '--';
+  return ['B', 'I', 'N', 'G', 'O'][Math.floor((num - 1) / 15)] || '--';
+};
 
 // Toast notification component
 const Toast = ({ message, type, onClose }: { message: string; type: 'success' | 'error' | 'info'; onClose: () => void }) => {
@@ -19,10 +34,10 @@ const Toast = ({ message, type, onClose }: { message: string; type: 'success' | 
   const bgColor = type === 'success' ? 'bg-green-500' : type === 'error' ? 'bg-red-500' : 'bg-blue-500';
 
   return (
-    <div className={`fixed top-4 right-4 ${bgColor} text-white px-6 py-3 rounded-lg shadow-lg z-50 max-w-sm`}>
+    <div className={`fixed left-4 right-4 top-4 ${bgColor} text-white px-4 py-3 rounded-lg shadow-lg z-50 sm:left-auto sm:max-w-sm`}>
       <div className="flex justify-between items-center">
         <span className="text-sm font-medium">{message}</span>
-        <button onClick={onClose} className="ml-2 text-white hover:text-gray-200">
+        <button onClick={onClose} className="ml-2 text-white hover:text-gray-200" aria-label="Dismiss notification">
           ✕
         </button>
       </div>
@@ -78,7 +93,7 @@ const checkWin = (marked: Set<string>) => {
 
 export default function BingoCard() {
   const { address } = useAccount();
-  const { writeContract, writeContractAsync } = useWriteContract();
+  const { writeContractAsync } = useWriteContract();
   
   // Game state
   const [card, setCard] = useState<(number | string)[][]>([]);
@@ -88,7 +103,6 @@ export default function BingoCard() {
   const [recentDraws, setRecentDraws] = useState<number[]>([]);
   const [winInfo, setWinInfo] = useState({ count: 0, types: [] as string[] });
   const [awardedTypes, setAwardedTypes] = useState<Set<string>>(new Set());
-  const [shareUrl, setShareUrl] = useState('');
   const [unlimitedToday, setUnlimitedToday] = useState(false);
   const [dailyPlays, setDailyPlays] = useState(0);
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' | 'info' } | null>(null);
@@ -99,19 +113,35 @@ export default function BingoCard() {
     | { state: 'error'; message: string; details?: string; diag?: any }
   >({ state: 'idle' });
   const [gameId, setGameId] = useState<number | null>(null);
-  const [gameTimer, setGameTimer] = useState(120);
+  const [gameTimer, setGameTimer] = useState(GAME_DURATION_SECONDS);
   const [timerActive, setTimerActive] = useState(false);
-  const [autoDrawInterval, setAutoDrawInterval] = useState<NodeJS.Timeout | null>(null);
+  const [autoDrawInterval, setAutoDrawInterval] = useState<ReturnType<typeof setInterval> | null>(null);
   const gridRef = useRef<HTMLDivElement>(null);
   const isJoiningRef = useRef<boolean>(false);
   const [streakCount, setStreakCount] = useState(0);
   const [challengeInfo, setChallengeInfo] = useState<{ id: string; name: string; goal: string; rewardBingo: number } | null>(null);
   const [notifyOptIn, setNotifyOptIn] = useState<boolean>(false);
-  
-  // Daily limits state
-  const [lastPlayDate, setLastPlayDate] = useState('');
-  const MAX_FREE_PLAYS = 3;
 
+  const playsRemaining = useMemo(
+    () => unlimitedToday ? 'Unlimited' : Math.max(0, MAX_FREE_PLAYS - dailyPlays).toString(),
+    [dailyPlays, unlimitedToday]
+  );
+  const drawProgress = useMemo(() => Math.round((drawnNumbers.size / 75) * 100), [drawnNumbers.size]);
+  const timerLabel = useMemo(() => formatTimer(gameTimer), [gameTimer]);
+  const gameStatus = useMemo(() => {
+    if (timerActive) return 'Live';
+    if (winInfo.types.length > 0) return 'Won';
+    if (drawnNumbers.size > 0) return 'Paused';
+    return 'Ready';
+  }, [drawnNumbers.size, timerActive, winInfo.types.length]);
+
+  const showToast = useCallback((message: string, type: 'success' | 'error' | 'info') => {
+    setToast({ message, type });
+  }, []);
+
+  const closeToast = useCallback(() => {
+    setToast(null);
+  }, []);
   // Initialize daily limits
   useEffect(() => {
     const today = new Date().toISOString().split('T')[0];
@@ -123,11 +153,9 @@ export default function BingoCard() {
       localStorage.setItem('lastPlayDate', today);
       localStorage.setItem('dailyPlays', '0');
       localStorage.removeItem('unlimitedDate');
-      setLastPlayDate(today);
       setDailyPlays(0);
       setUnlimitedToday(false);
     } else {
-      setLastPlayDate(storedDate || '');
       setDailyPlays(storedPlays);
       setUnlimitedToday(storedUnlimited);
     }
@@ -171,7 +199,7 @@ export default function BingoCard() {
     setRecentDraws([]);
     setWinInfo({ count: 0, types: [] });
     setAwardedTypes(new Set());
-    setGameTimer(120);
+    setGameTimer(GAME_DURATION_SECONDS);
     setTimerActive(false);
     if (autoDrawInterval) {
       clearInterval(autoDrawInterval);
@@ -193,7 +221,7 @@ export default function BingoCard() {
           console.log('🎮 All numbers drawn - stopping auto draw');
           clearInterval(interval);
           setTimerActive(false);
-          alert('🎯 All numbers drawn! Game complete.');
+          showToast('All numbers drawn. Game complete.', 'info');
           return prevDrawn;
         }
         
@@ -208,9 +236,9 @@ export default function BingoCard() {
         
         return newDrawn;
       });
-    }, 3000);
+    }, DRAW_INTERVAL_MS);
     setAutoDrawInterval(interval);
-  }, []);
+  }, [showToast]);
 
   // Game timer management
   useEffect(() => {
@@ -220,9 +248,9 @@ export default function BingoCard() {
     } else if (gameTimer === 0 && timerActive) {
       stopAutoDraw();
       setTimerActive(false);
-      alert('⏰ Time up! Game over.');
+      showToast('Time is up. Start a new round when you are ready.', 'info');
     }
-  }, [timerActive, gameTimer, stopAutoDraw]);
+  }, [timerActive, gameTimer, stopAutoDraw, showToast]);
 
   // Pause/cleanup on back/navigation
   useEffect(() => {
@@ -269,7 +297,7 @@ export default function BingoCard() {
           args: [],
           value: BigInt(0),
         });
-      } catch (e: any) {
+      } catch {
         // If join prompts for token transfer/fee or is blocked, skip and let 2-arg awardWins handle session
         console.warn('join() skipped due to wallet error; proceeding without explicit join');
       }
@@ -288,15 +316,7 @@ export default function BingoCard() {
     } finally {
       isJoiningRef.current = false;
     }
-  }, [address, writeContractAsync]);
-
-  const normalizeWinType = (t: string): string => {
-    const s = t.toLowerCase();
-    if (s.includes('double')) return 'DOUBLE_LINE';
-    if (s.includes('full')) return 'FULL_HOUSE';
-    if (s.includes('line')) return 'LINE';
-    return t.toUpperCase();
-  };
+  }, [address, showToast, writeContractAsync]);
 
   // Auto-join once when wallet connects (gasless if configured)
   useEffect(() => {
@@ -310,7 +330,7 @@ export default function BingoCard() {
 
   const startGame = useCallback(async () => {
     if (!unlimitedToday && dailyPlays >= MAX_FREE_PLAYS) {
-      alert('Daily free plays used up! Share on Farcaster for +1 play or buy unlimited access.');
+      showToast('Daily free plays are used. Share for another play or unlock unlimited for today.', 'info');
       return;
     }
 
@@ -357,7 +377,20 @@ export default function BingoCard() {
     } else {
       console.log('🎮 Game started with wallet connected - ready for automatic rewards!');
     }
-  }, [unlimitedToday, dailyPlays, resetGame, startAutoDraw, address]);
+  }, [unlimitedToday, dailyPlays, resetGame, startAutoDraw, address, showToast, streakCount]);
+
+  const pauseGame = useCallback(() => {
+    stopAutoDraw();
+    setTimerActive(false);
+    showToast('Game paused.', 'info');
+  }, [showToast, stopAutoDraw]);
+
+  const resumeGame = useCallback(() => {
+    if (gameTimer <= 0 || drawnNumbers.size >= 75) return;
+    startAutoDraw();
+    setTimerActive(true);
+    showToast('Game resumed.', 'info');
+  }, [drawnNumbers.size, gameTimer, showToast, startAutoDraw]);
 
   const markCell = useCallback((row: number, col: number) => {
     const num = card[col]?.[row] ?? '';
@@ -522,7 +555,7 @@ export default function BingoCard() {
             let json: any = null;
             try {
               json = await response.json();
-            } catch (e) {
+            } catch {
               try { text = await response.text(); } catch {}
             }
             console.error('📨 Error response body:', text);
@@ -644,8 +677,10 @@ export default function BingoCard() {
     } else if (newWin.count > winInfo.count && !address) {
       console.log('🎯 Win detected but no wallet connected');
       setWinInfo(newWin);
-      alert(`🎉 ${newWin.types.join(' + ')} achieved! Connect your wallet to receive automatic $BINGO rewards!`);
+      showToast(`${newWin.types.join(' + ')} achieved. Connect your wallet to receive $BINGO rewards.`, 'success');
     }
+  // Reward dispatch intentionally snapshots award state for each newly detected win.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [marked, address, winInfo.count, gameId]);
 
   const shareForExtraPlay = async () => {
@@ -664,11 +699,11 @@ export default function BingoCard() {
       
       setDailyPlays(0);
       localStorage.setItem('dailyPlays', '0');
-      alert('✅ Shared! You get +1 play today.');
+      showToast('Shared. You have an extra play today.', 'success');
       
     } catch (error: any) {
       console.error('❌ Share failed:', error);
-      alert('Share failed—try again.');
+      showToast('Share failed. Try again.', 'error');
     }
   };
 
@@ -737,16 +772,8 @@ export default function BingoCard() {
     }
   };
 
-  const showToast = (message: string, type: 'success' | 'error' | 'info') => {
-    setToast({ message, type });
-  };
-
-  const closeToast = () => {
-    setToast(null);
-  };
-
   return (
-    <div className="flex flex-col items-center gap-4 p-4 bg-white rounded-lg shadow-lg max-w-md mx-auto">
+    <div className="mx-auto flex w-full max-w-xl flex-col gap-4 rounded-lg border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
       {/* Toast notifications */}
       {toast && (
         <Toast
@@ -755,6 +782,68 @@ export default function BingoCard() {
           onClose={closeToast}
         />
       )}
+
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <div className="text-sm font-semibold text-slate-500">Round status</div>
+          <div className="mt-1 flex items-center gap-2">
+            <span className="rounded-md bg-coinbase-blue px-2 py-1 text-xs font-bold uppercase tracking-wide text-white">{gameStatus}</span>
+            <span className="text-sm text-slate-600">
+              {address ? `${address.slice(0, 6)}...${address.slice(-4)}` : 'Wallet not connected'}
+            </span>
+          </div>
+        </div>
+        <div className="text-right">
+          <div className="font-mono text-3xl font-bold text-slate-950">{timerLabel}</div>
+          <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">time left</div>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-3 gap-2 text-center text-sm">
+        <div className="rounded-md bg-slate-50 p-3">
+          <div className="font-mono text-xl font-bold text-slate-950">{playsRemaining}</div>
+          <div className="text-xs text-slate-500">plays left</div>
+        </div>
+        <div className="rounded-md bg-slate-50 p-3">
+          <div className="font-mono text-xl font-bold text-slate-950">{drawnNumbers.size}/75</div>
+          <div className="text-xs text-slate-500">drawn</div>
+        </div>
+        <div className="rounded-md bg-slate-50 p-3">
+          <div className="font-mono text-xl font-bold text-slate-950">{streakCount}</div>
+          <div className="text-xs text-slate-500">day streak</div>
+        </div>
+      </div>
+
+      <div className="h-2 overflow-hidden rounded-full bg-slate-100" aria-label={`${drawProgress}% of numbers drawn`}>
+        <div className="h-full rounded-full bg-coinbase-blue transition-all" style={{ width: `${drawProgress}%` }} />
+      </div>
+
+      <div className="flex items-center justify-between gap-3 rounded-md border border-slate-200 p-3">
+        <div>
+          <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">Current draw</div>
+          <div className="mt-1 font-mono text-3xl font-bold text-coinbase-blue">
+            {currentNumber ? `${numberColumn(currentNumber)}-${currentNumber}` : '--'}
+          </div>
+        </div>
+        <div className="flex min-h-12 flex-wrap justify-end gap-2">
+          {recentDraws.length > 0 ? (
+            recentDraws.map((num, idx) => (
+              <div
+                key={`${num}-${idx}`}
+                className={`flex h-11 w-11 items-center justify-center rounded-md border font-mono text-base font-bold transition ${
+                  idx === recentDraws.length - 1
+                    ? 'border-coinbase-blue bg-coinbase-blue text-white'
+                    : 'border-slate-200 bg-white text-slate-500'
+                }`}
+              >
+                {num}
+              </div>
+            ))
+          ) : (
+            <div className="flex items-center text-sm text-slate-400">Waiting for draws</div>
+          )}
+        </div>
+      </div>
 
       {/* Reward Status (mobile-visible) */}
       {rewardStatus.state !== 'idle' && (
@@ -791,7 +880,7 @@ export default function BingoCard() {
       )}
 
       {/* Connection Status */}
-      <div className="text-center">
+      <div className="hidden text-center">
         <p className="text-sm text-gray-600">
           {address ? (
             <>Connected: {address.slice(0, 6)}...{address.slice(-4)}</>
@@ -835,15 +924,15 @@ export default function BingoCard() {
 
       {/* Timer */}
       {timerActive && (
-        <p className="text-xl text-red-500 font-bold animate-pulse mb-4">
+        <p className="hidden text-xl text-red-500 font-bold animate-pulse mb-4">
           ⏰ Time Left: {Math.floor(gameTimer / 60)}:{gameTimer % 60 < 10 ? '0' : ''}{gameTimer % 60}
         </p>
       )}
 
       {/* Bingo Grid */}
-      <div ref={gridRef} className="grid grid-cols-5 gap-1 mb-4">
+      <div ref={gridRef} className="grid grid-cols-5 gap-1">
         {['B', 'I', 'N', 'G', 'O'].map((letter) => (
-          <div key={letter} className="font-bold text-coinbase-blue text-lg">{letter}</div>
+          <div key={letter} className="flex h-8 items-center justify-center rounded-md bg-slate-950 text-sm font-bold text-white">{letter}</div>
         ))}
         {Array.from({ length: 5 }).map((_, row) =>
           Array.from({ length: 5 }).map((_, col) => {
@@ -856,10 +945,10 @@ export default function BingoCard() {
               <button
                 key={pos}
                 onClick={() => markCell(row, col)}
-                className={`w-full aspect-square border-2 border-coinbase-blue flex items-center justify-center text-sm font-bold rounded transition-all duration-200
-                  ${isMarked ? 'bg-coinbase-blue text-white' : 'bg-white text-coinbase-blue hover:bg-blue-100'}
-                  ${num === 'FREE' ? 'text-xs rotate-[-45deg]' : ''}
-                  ${isDrawn && !isMarked ? 'animate-pulse border-green-500 border-4' : ''}`}
+                className={`flex aspect-square min-h-12 items-center justify-center rounded-md border-2 text-sm font-bold transition-all duration-200 sm:text-base
+                  ${isMarked ? 'border-coinbase-blue bg-coinbase-blue text-white shadow-sm' : 'border-slate-200 bg-white text-slate-900 hover:border-coinbase-blue hover:bg-blue-50'}
+                  ${num === 'FREE' ? 'text-xs' : ''}
+                  ${isDrawn && !isMarked ? 'animate-pulse border-emerald-500 bg-emerald-50 text-emerald-700' : ''}`}
                 disabled={isMarked || (typeof num !== 'number' && num !== 'FREE')}
               >
                 {num}
@@ -871,24 +960,40 @@ export default function BingoCard() {
 
       {/* Game Controls */}
       <div className="flex justify-center mb-4">
-        <div className="flex flex-col gap-2 items-center">
+        <div className="grid w-full grid-cols-2 gap-2">
         <button
           onClick={startGame}
             disabled={!unlimitedToday && dailyPlays >= MAX_FREE_PLAYS}
-            className={`px-6 py-3 rounded-lg font-bold text-white transition-colors ${
+            className={`rounded-md px-4 py-3 font-bold text-white transition-colors ${
               !unlimitedToday && dailyPlays >= MAX_FREE_PLAYS
-                ? 'bg-gray-400 cursor-not-allowed'
-                : 'bg-coinbase-blue hover:bg-blue-600'
+                ? 'bg-slate-300 cursor-not-allowed'
+                : 'bg-coinbase-blue hover:bg-blue-700'
             }`}
           >
             {!unlimitedToday && dailyPlays >= MAX_FREE_PLAYS ? 'Daily Plays Used' : 'New Game'}
         </button>
+          {timerActive ? (
+            <button
+              onClick={pauseGame}
+              className="rounded-md border border-slate-200 px-4 py-3 font-bold text-slate-700 transition hover:border-slate-400"
+            >
+              Pause
+            </button>
+          ) : (
+            <button
+              onClick={resumeGame}
+              disabled={drawnNumbers.size === 0 || gameTimer <= 0}
+              className="rounded-md border border-slate-200 px-4 py-3 font-bold text-slate-700 transition hover:border-slate-400 disabled:cursor-not-allowed disabled:text-slate-300"
+            >
+              Resume
+            </button>
+          )}
           {/* Auto-join runs in the background; no extra button needed for UX */}
         </div>
       </div>
 
       {/* Recent Draws */}
-      <div className="flex justify-center gap-2 mt-2 mb-4">
+      <div className="hidden justify-center gap-2 mt-2 mb-4">
         {recentDraws.length > 0 ? (
           recentDraws.map((num, idx) => (
             <div
@@ -908,11 +1013,11 @@ export default function BingoCard() {
 
       {/* Win Status */}
       {winInfo.types.length > 0 && (
-        <div className="mb-4 p-4 bg-gradient-to-r from-green-100 to-blue-100 rounded-lg border-2 border-green-500">
-          <p className="text-2xl font-bold text-coinbase-blue animate-pulse">
+        <div className="rounded-md border border-emerald-200 bg-emerald-50 p-3 text-emerald-800">
+          <p className="font-bold">
             🎉 {winInfo.types.join(' + ')} ({winInfo.count} total) ✨ Rewards Sent!
           </p>
-          <p className="text-sm text-green-700 mt-2">
+          <p className="mt-1 text-sm">
             {1000 * winInfo.types.length} $BINGO tokens awarded automatically!
           </p>
         </div>
@@ -920,18 +1025,18 @@ export default function BingoCard() {
 
       {/* Daily Limit Upsells */}
       {(!unlimitedToday && dailyPlays >= MAX_FREE_PLAYS) && (
-        <div className="mt-4 p-4 bg-blue-100 rounded-lg shadow-md">
+        <div className="rounded-md bg-blue-50 p-3">
           <p className="text-coinbase-blue mb-2 font-semibold">🎯 Free plays used up today! Get more:</p>
           <div className="space-y-2">
             <button 
               onClick={shareForExtraPlay}
-              className="w-full bg-coinbase-blue text-white px-4 py-2 rounded-lg font-bold hover:bg-blue-600"
+              className="w-full rounded-md bg-coinbase-blue px-4 py-2 font-bold text-white hover:bg-blue-700"
             >
               📢 Share on Farcaster (+1 Play)
             </button>
             <button
               onClick={payForUnlimited}
-              className="w-full bg-green-500 text-white px-4 py-2 rounded-lg font-bold hover:bg-green-600"
+              className="w-full rounded-md bg-emerald-600 px-4 py-2 font-bold text-white hover:bg-emerald-700"
             >
               💰 Pay 50 $BINGO (Unlimited Today)
             </button>

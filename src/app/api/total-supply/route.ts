@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { createPublicClient, http, formatUnits } from 'viem';
-import { base } from 'viem/chains';
+import { baseChain } from '@/lib/base-chain';
 
 const erc20Abi = [
   { type: 'function', stateMutability: 'view', name: 'decimals', inputs: [], outputs: [{ type: 'uint8' }] },
@@ -8,7 +8,7 @@ const erc20Abi = [
 ] as const;
 
 const TOKEN_ADDRESS = '0xd5D90dF16CA7b11Ad852e3Bf93c0b9b774CEc047' as `0x${string}`;
-const client = createPublicClient({ chain: base, transport: http() });
+const client = createPublicClient({ chain: baseChain, transport: http() });
 
 export async function GET() {
   try {

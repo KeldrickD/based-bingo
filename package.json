@@ -3,9 +3,9 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev --turbopack && node public/index.js" ,
-    "build": "next build && node public/index.js",
-    "start": "next start && node public/index.js",
+    "dev": "next dev --turbopack",
+    "build": "next build",
+    "start": "next start",
     "lint": "next lint"
   },
   "dependencies": {
@@ -19,12 +19,12 @@
     "html-to-image": "^1.11.13",
     "html2canvas": "^1.4.1",
     "jose": "^5.9.3",
-    "next": "15.4.1",
+    "next": "^15.5.18",
     "ox": "^0.13.1",
-    "react": "19.1.0",
-    "react-dom": "19.1.0",
-    "viem": "^2.31.7",
-    "wagmi": "^2.15.6"
+    "react": "^19.2.6",
+    "react-dom": "^19.2.6",
+    "viem": "^2.49.2",
+    "wagmi": "^2.19.5"
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3",
@@ -33,7 +33,7 @@
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "eslint": "^9",
-    "eslint-config-next": "15.4.1",
+    "eslint-config-next": "^15.5.18",
     "tailwindcss": "^4",
     "typescript": "^5"
   }

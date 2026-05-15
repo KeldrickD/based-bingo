@@ -1,11 +1,11 @@
 'use client';
 
 import { MiniKitProvider as Provider } from '@coinbase/onchainkit/minikit';
-import { base } from 'wagmi/chains';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { useEffect, useState, ReactNode } from 'react';
 import { WagmiProvider } from 'wagmi';
+import { base } from 'wagmi/chains';
 import { config } from '../lib/wagmi-config';
-import { useState, useEffect, ReactNode } from 'react';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -25,26 +25,13 @@ export function MiniKitProvider({ children }: MiniKitProviderProps) {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    // Add initialization timeout to prevent hanging
-    const initTimeout = setTimeout(() => {
-      if (!isInitialized) {
-        console.warn('⚠️ Provider initialization taking longer than expected, continuing anyway...');
-        setIsInitialized(true);
-      }
-    }, 5000); // 5 second timeout
-
     try {
-      // Initialize providers
       setIsInitialized(true);
-      clearTimeout(initTimeout);
     } catch (err: any) {
-      console.error('❌ Provider initialization failed:', err);
+      console.error('Provider initialization failed:', err);
       setError(err.message);
-      setIsInitialized(true); // Continue anyway
-      clearTimeout(initTimeout);
+      setIsInitialized(true);
     }
-
-    return () => clearTimeout(initTimeout);
   }, []);
 
   if (!isInitialized) {
@@ -57,7 +44,7 @@ export function MiniKitProvider({ children }: MiniKitProviderProps) {
   }
 
   if (error) {
-    console.error('❌ Provider error, but continuing with limited functionality:', error);
+    console.error('Provider error, but continuing with limited functionality:', error);
   }
 
   return (
@@ -69,4 +56,4 @@ export function MiniKitProvider({ children }: MiniKitProviderProps) {
       </WagmiProvider>
     </Provider>
   );
-} 
+}

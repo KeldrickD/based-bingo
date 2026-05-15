@@ -23,20 +23,6 @@ const getAppUrl = () => {
   return 'https://www.basedbingo.xyz';
 };
 
-// Detect if running inside a Farcaster/Warpcast frame to avoid blocked calls
-const detectFarcaster = () => {
-  try {
-    if (typeof navigator !== 'undefined' && navigator.userAgent) {
-      if (/Farcaster|Warpcast/i.test(navigator.userAgent)) return true;
-    }
-    if (typeof window !== 'undefined') {
-      const host = window.location?.hostname || '';
-      if (/warpcast\.com|farcaster\.xyz/i.test(host)) return true;
-    }
-  } catch {}
-  return process.env.NEXT_PUBLIC_IS_FRAME === '1';
-};
-
 // Select RPC with priority: CDP Paymaster > Default > Backup
 const getRpcUrl = () => {
   if (CDP_RPC) {
@@ -49,8 +35,6 @@ const getRpcUrl = () => {
 
 const rpcUrl = getRpcUrl();
 const appUrl = getAppUrl();
-
-const isFarcasterEnv = detectFarcaster();
 
 // Build connectors (exclude WalletConnect to satisfy Farcaster CSP)
 const connectorsList = [
