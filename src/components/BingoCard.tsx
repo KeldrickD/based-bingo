@@ -7,7 +7,6 @@ import { sdk } from '@farcaster/frame-sdk';
 import { isMiniApp, supportsHaptics, hapticsNotify, hapticsImpact } from '@/lib/miniapp';
 import basedBingoABI from '@/abis/BasedBingo.json';
 import bingoGameV3ABI from '@/abis/BingoGameV3.json';
-import { wagmiInfo } from '@/lib/wagmi-config';
 
 const GAME_DURATION_SECONDS = 120;
 const DRAW_INTERVAL_MS = 3000;
